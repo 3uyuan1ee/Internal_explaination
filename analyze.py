@@ -178,7 +178,7 @@ def plot_global_explanation(cbm, attr_names, class_names, save_path, top_k=5):
     axes = axes.flatten()
 
     for ax, c in zip(axes, sample_classes):
-        _, top_idx = np.abs(W[c]).argsort()[-top_k:][::-1]
+        top_idx = np.abs(W[c]).argsort()[-top_k:][::-1]
         names = [attr_names[i][:25] for i in top_idx]
         weights = [W[c, i] for i in top_idx]
         colors = ["#2ecc71" if w > 0 else "#e74c3c" for w in weights]
