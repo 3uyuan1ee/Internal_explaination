@@ -5,20 +5,24 @@ Usage:
     python train_baseline.py
 """
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import torch
 import torch.nn as nn
 from torch.optim import SGD
 from torch.optim.lr_scheduler import StepLR
 from tqdm import tqdm
 
-from config import (
+from cbm.config import (
     DEVICE, BASELINE_LR, BASELINE_MOMENTUM, BASELINE_WEIGHT_DECAY,
     BASELINE_EPOCHS, BASELINE_BATCH_SIZE, CHECKPOINT_DIR, USE_AMP,
     EARLY_STOP_PATIENCE,
 )
-from dataset import get_dataloaders
-from models.baseline import BaselineModel
-from utils import AverageMeter
+from cbm.dataset import get_dataloaders
+from cbm.models.baseline import BaselineModel
+from cbm.utils import AverageMeter
 
 
 def train_one_epoch(model, loader, criterion, optimizer, device, scaler=None):

@@ -7,8 +7,8 @@ Supports concept-level intervention for causal analysis.
 import torch
 import torch.nn as nn
 
-from models.concept_predictor import ConceptPredictor
-from models.label_predictor import LabelPredictor
+from .concept_predictor import ConceptPredictor
+from .label_predictor import LabelPredictor
 
 
 class ConceptBottleneckModel(nn.Module):

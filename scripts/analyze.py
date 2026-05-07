@@ -12,18 +12,21 @@ Usage:
     python analyze.py
 """
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
-from pathlib import Path
 from sklearn.metrics import confusion_matrix
 import itertools
 
-from config import DEVICE, CHECKPOINT_DIR, FIGURE_DIR, BASELINE_BATCH_SIZE, TORCH_LOAD_KWARGS, LABEL_EXPAND_DIM
-from dataset import get_dataloaders
-from models.baseline import BaselineModel
-from models.cbm import ConceptBottleneckModel
+from cbm.config import DEVICE, CHECKPOINT_DIR, FIGURE_DIR, BASELINE_BATCH_SIZE, TORCH_LOAD_KWARGS, LABEL_EXPAND_DIM
+from cbm.dataset import get_dataloaders
+from cbm.models.baseline import BaselineModel
+from cbm.models.cbm import ConceptBottleneckModel
 
 matplotlib.rcParams["font.sans-serif"] = ["Arial Unicode MS", "SimHei", "DejaVu Sans"]
 matplotlib.rcParams["axes.unicode_minus"] = False
@@ -251,7 +254,7 @@ def main():
         baseline_acc = results["baseline_acc"]
         cbm_acc = results["cbm_acc"]
     else:
-        from evaluate import intervention_experiment, evaluate_baseline, evaluate_cbm
+        from scripts.evaluate import intervention_experiment, evaluate_baseline, evaluate_cbm
         baseline_acc = evaluate_baseline(baseline, test_loader, DEVICE)
         cbm_acc, _ = evaluate_cbm(cbm, test_loader, DEVICE)
         interv = intervention_experiment(cbm, test_loader, DEVICE)

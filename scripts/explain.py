@@ -8,22 +8,25 @@ Usage:
     python explain.py [--num_images 8]
 """
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import argparse
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 from PIL import Image
-from pathlib import Path
 
-from config import (
+from cbm.config import (
     DEVICE, CHECKPOINT_DIR, FIGURE_DIR, DATA_DIR,
     IMAGENET_MEAN, IMAGENET_STD, IMAGE_SIZE, TORCH_LOAD_KWARGS,
     LABEL_EXPAND_DIM,
 )
-from dataset import get_dataloaders
-from models.baseline import BaselineModel
-from models.cbm import ConceptBottleneckModel
+from cbm.dataset import get_dataloaders
+from cbm.models.baseline import BaselineModel
+from cbm.models.cbm import ConceptBottleneckModel
 
 matplotlib.rcParams["font.sans-serif"] = ["Arial Unicode MS", "SimHei", "DejaVu Sans"]
 matplotlib.rcParams["axes.unicode_minus"] = False

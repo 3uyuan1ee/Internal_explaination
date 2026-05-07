@@ -8,22 +8,26 @@ Usage:
     python train_label.py
 """
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR
 from tqdm import tqdm
 
-from config import (
+from cbm.config import (
     DEVICE, LABEL_LR, LABEL_WEIGHT_DECAY,
     LABEL_EPOCHS, LABEL_BATCH_SIZE, LABEL_L1_LAMBDA,
     LABEL_EXPAND_DIM, CHECKPOINT_DIR, TORCH_LOAD_KWARGS, USE_AMP,
     EARLY_STOP_PATIENCE,
 )
-from dataset import get_dataloaders
-from models.concept_predictor import ConceptPredictor
-from models.label_predictor import LabelPredictor
-from utils import AverageMeter
+from cbm.dataset import get_dataloaders
+from cbm.models.concept_predictor import ConceptPredictor
+from cbm.models.label_predictor import LabelPredictor
+from cbm.utils import AverageMeter
 
 
 def l1_penalty(model):

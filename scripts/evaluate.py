@@ -6,17 +6,21 @@ Usage:
     python evaluate.py
 """
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import torch
 import torch.nn as nn
 import numpy as np
 from tqdm import tqdm
 
-from config import DEVICE, CHECKPOINT_DIR, FIGURE_DIR, BASELINE_BATCH_SIZE, TORCH_LOAD_KWARGS, LABEL_EXPAND_DIM
-from dataset import get_dataloaders
-from models.baseline import BaselineModel
-from models.concept_predictor import ConceptPredictor
-from models.label_predictor import LabelPredictor
-from models.cbm import ConceptBottleneckModel
+from cbm.config import DEVICE, CHECKPOINT_DIR, FIGURE_DIR, BASELINE_BATCH_SIZE, TORCH_LOAD_KWARGS, LABEL_EXPAND_DIM
+from cbm.dataset import get_dataloaders
+from cbm.models.baseline import BaselineModel
+from cbm.models.concept_predictor import ConceptPredictor
+from cbm.models.label_predictor import LabelPredictor
+from cbm.models.cbm import ConceptBottleneckModel
 
 
 # ── Accuracy Comparison ────────────────────────────────────────────────

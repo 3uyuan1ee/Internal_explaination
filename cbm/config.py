@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 # ── Paths ──────────────────────────────────────────────────────────────
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 # Standard CUB-200-2011 tgz extracts to CUB_200_2011/
 _CUB_DIR = BASE_DIR / "data" / "CUB_200_2011"
 if not _CUB_DIR.exists():

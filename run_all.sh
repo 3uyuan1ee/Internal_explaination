@@ -7,31 +7,31 @@ python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}, Device: {tor
 
 echo ""
 echo "=== Stage 1: Training Baseline ==="
-python train_baseline.py
+python scripts/train_baseline.py
 
 echo ""
 echo "=== Stage 2: Training Concept Predictor ==="
-python train_concept.py
+python scripts/train_concept.py
 
 echo ""
 echo "=== Stage 3: Training Label Predictor ==="
-python train_label.py
+python scripts/train_label.py
 
 echo ""
 echo "=== Stage 4: Evaluation ==="
-python evaluate.py
+python scripts/evaluate.py
 
 echo ""
 echo "=== Stage 5: Explanation Generation ==="
-python explain.py --num_images 8
+python scripts/explain.py --num_images 8
 
 echo ""
 echo "=== Stage 6: Analysis & Visualization ==="
-python analyze.py
+python scripts/analyze.py
 
 echo ""
 echo "=== Stage 7: Adversarial Robustness Analysis ==="
-python adversarial.py --num_examples 6 --epsilon 0.05
+python scripts/adversarial.py --num_examples 6 --epsilon 0.05
 
 echo ""
 echo "=== All experiments completed! ==="

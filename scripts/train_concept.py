@@ -8,6 +8,10 @@ Usage:
     python train_concept.py
 """
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import torch
 import torch.nn as nn
 from torch.optim import Adam
@@ -15,14 +19,14 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 import numpy as np
 
-from config import (
+from cbm.config import (
     DEVICE, CONCEPT_LR, CONCEPT_WEIGHT_DECAY,
     CONCEPT_EPOCHS, CONCEPT_BATCH_SIZE, CHECKPOINT_DIR, USE_AMP,
     EARLY_STOP_PATIENCE,
 )
-from dataset import get_dataloaders
-from models.concept_predictor import ConceptPredictor
-from utils import AverageMeter, compute_attribute_imbalance
+from cbm.dataset import get_dataloaders
+from cbm.models.concept_predictor import ConceptPredictor
+from cbm.utils import AverageMeter, compute_attribute_imbalance
 
 
 def train_one_epoch(model, loader, criterion, optimizer, device, scaler=None):

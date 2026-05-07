@@ -15,6 +15,10 @@ Usage:
     python adversarial.py [--num_examples 6] [--epsilon 0.05]
 """
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import argparse
 import torch
 import torch.nn.functional as F
@@ -22,16 +26,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 from tqdm import tqdm
-from pathlib import Path
 
-from config import (
+from cbm.config import (
     DEVICE, CHECKPOINT_DIR, FIGURE_DIR, BASELINE_BATCH_SIZE,
     ADVERSARIAL_EPSILONS, ADVERSARIAL_DEFENSE_TOP_K,
     IMAGENET_MEAN, IMAGENET_STD, TORCH_LOAD_KWARGS,
 )
-from dataset import get_dataloaders
-from models.baseline import BaselineModel
-from models.cbm import ConceptBottleneckModel
+from cbm.dataset import get_dataloaders
+from cbm.models.baseline import BaselineModel
+from cbm.models.cbm import ConceptBottleneckModel
 
 matplotlib.rcParams["font.sans-serif"] = ["Arial Unicode MS", "SimHei", "DejaVu Sans"]
 matplotlib.rcParams["axes.unicode_minus"] = False
