@@ -5,4 +5,4 @@ matplotlib>=3.7
 scikit-learn>=1.2
 tqdm>=4.65
 Pillow>=9.5
-pytorch-grad-cam>=1.4
+grad-cam>=1.5
