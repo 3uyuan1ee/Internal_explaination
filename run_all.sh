@@ -30,5 +30,9 @@ echo "=== Stage 6: Analysis & Visualization ==="
 python analyze.py
 
 echo ""
+echo "=== Stage 7: Adversarial Robustness Analysis ==="
+python adversarial.py --num_examples 6 --epsilon 0.05
+
+echo ""
 echo "=== All experiments completed! ==="
 ls -la outputs/figures/

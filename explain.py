@@ -19,6 +19,7 @@ from pathlib import Path
 from config import (
     DEVICE, CHECKPOINT_DIR, FIGURE_DIR, DATA_DIR,
     IMAGENET_MEAN, IMAGENET_STD, IMAGE_SIZE, TORCH_LOAD_KWARGS,
+    LABEL_EXPAND_DIM,
 )
 from dataset import get_dataloaders
 from models.baseline import BaselineModel
@@ -44,7 +45,7 @@ def generate_concept_explanation(cbm, image_tensor, attr_names, class_names, top
     pred_class = class_logits.argmax(1).item()
     pred_confidence = torch.softmax(class_logits, 1).max().item()
 
-    W = cbm.label_predictor.linear.weight.data[pred_class]
+    W = cbm.label_predictor.weight_matrix[pred_class]
     importance = concept_probs.squeeze().cpu() * W.cpu().abs()
     topk_values, topk_indices = importance.topk(top_k)
 
@@ -165,7 +166,7 @@ def main():
         torch.load(CHECKPOINT_DIR / "baseline_best.pth", map_location=DEVICE, **TORCH_LOAD_KWARGS)
     )
 
-    cbm = ConceptBottleneckModel(num_concepts, num_classes).to(DEVICE)
+    cbm = ConceptBottleneckModel(num_concepts, num_classes, expand_dim=LABEL_EXPAND_DIM).to(DEVICE)
     ckpt = torch.load(CHECKPOINT_DIR / "cbm_best.pth", map_location=DEVICE, **TORCH_LOAD_KWARGS)
     cbm.concept_predictor.load_state_dict(ckpt["concept_model"])
     cbm.label_predictor.load_state_dict(ckpt["label_model"])

@@ -14,14 +14,17 @@ from tqdm import tqdm
 from config import (
     DEVICE, BASELINE_LR, BASELINE_MOMENTUM, BASELINE_WEIGHT_DECAY,
     BASELINE_EPOCHS, BASELINE_BATCH_SIZE, CHECKPOINT_DIR, USE_AMP,
+    EARLY_STOP_PATIENCE,
 )
 from dataset import get_dataloaders
 from models.baseline import BaselineModel
+from utils import AverageMeter
 
 
 def train_one_epoch(model, loader, criterion, optimizer, device, scaler=None):
     model.train()
-    total_loss, correct, total = 0.0, 0, 0
+    loss_meter = AverageMeter()
+    acc_meter = AverageMeter()
 
     for images, _, labels in tqdm(loader, desc="Train", leave=False):
         images, labels = images.to(device), labels.to(device)
@@ -40,25 +43,25 @@ def train_one_epoch(model, loader, criterion, optimizer, device, scaler=None):
             loss.backward()
             optimizer.step()
 
-        total_loss += loss.item() * images.size(0)
-        correct += (logits.argmax(1) == labels).sum().item()
-        total += images.size(0)
+        loss_meter.update(loss.item(), images.size(0))
+        correct = (logits.argmax(1) == labels).sum().item()
+        acc_meter.update(correct / images.size(0) * 100, images.size(0))
 
-    return total_loss / total, correct / total
+    return loss_meter.avg, acc_meter.avg
 
 
 @torch.no_grad()
 def evaluate(model, loader, device):
     model.eval()
-    correct, total = 0, 0
+    acc_meter = AverageMeter()
 
     for images, _, labels in loader:
         images, labels = images.to(device), labels.to(device)
         logits = model(images)
-        correct += (logits.argmax(1) == labels).sum().item()
-        total += images.size(0)
+        correct = (logits.argmax(1) == labels).sum().item()
+        acc_meter.update(correct / images.size(0) * 100, images.size(0))
 
-    return correct / total
+    return acc_meter.avg
 
 
 def main():
@@ -78,6 +81,7 @@ def main():
     scaler = torch.amp.GradScaler("cuda", enabled=USE_AMP)
 
     best_acc = 0.0
+    best_epoch = 0
     for epoch in range(1, BASELINE_EPOCHS + 1):
         train_loss, train_acc = train_one_epoch(
             model, train_loader, criterion, optimizer, DEVICE, scaler
@@ -87,15 +91,21 @@ def main():
 
         print(f"Epoch {epoch:3d}/{BASELINE_EPOCHS} | "
               f"Loss: {train_loss:.4f} | "
-              f"Train Acc: {train_acc:.4f} | "
-              f"Test Acc: {test_acc:.4f}")
+              f"Train Acc: {train_acc:.2f}% | "
+              f"Test Acc: {test_acc:.2f}%")
 
         if test_acc > best_acc:
             best_acc = test_acc
+            best_epoch = epoch
             torch.save(model.state_dict(), CHECKPOINT_DIR / "baseline_best.pth")
-            print(f"  → Saved best model (acc={best_acc:.4f})")
+            print(f"  -> Saved best model (acc={best_acc:.2f}%)")
 
-    print(f"\nBest test accuracy: {best_acc:.4f}")
+        # Early stopping
+        if epoch - best_epoch >= EARLY_STOP_PATIENCE:
+            print(f"Early stopping at epoch {epoch} (best was {best_epoch})")
+            break
+
+    print(f"\nBest test accuracy: {best_acc:.2f}%")
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ import torch.nn as nn
 import numpy as np
 from tqdm import tqdm
 
-from config import DEVICE, CHECKPOINT_DIR, FIGURE_DIR, BASELINE_BATCH_SIZE, TORCH_LOAD_KWARGS
+from config import DEVICE, CHECKPOINT_DIR, FIGURE_DIR, BASELINE_BATCH_SIZE, TORCH_LOAD_KWARGS, LABEL_EXPAND_DIM
 from dataset import get_dataloaders
 from models.baseline import BaselineModel
 from models.concept_predictor import ConceptPredictor
@@ -99,9 +99,13 @@ def intervention_experiment(model, loader, device):
             )
 
             # 5. Correct top-5 most important concepts
-            W = model.label_predictor.linear.weight.data
-            class_weights = W[pred_classes]  # [B, num_concepts]
-            importance = pred_concepts * class_weights.abs()
+            W = model.label_predictor.weight_matrix
+            if W.shape[1] != pred_concepts.shape[1]:
+                # MLP mode: use gradient-based importance instead
+                importance = pred_concepts
+            else:
+                class_weights = W[pred_classes]
+                importance = pred_concepts * class_weights.abs()
             _, top5_idx = importance.topk(5, dim=1)
 
             corrected = pred_concepts.clone()
@@ -129,10 +133,13 @@ def concept_fidelity(model, loader, device):
             pred_concepts, pred_logits = model(images)
             pred_classes = pred_logits.argmax(1)
 
-            W = model.label_predictor.linear.weight.data
+            W = model.label_predictor.weight_matrix
             for i in range(images.size(0)):
-                class_weights = W[pred_classes[i]]
-                importance = pred_concepts[i] * class_weights.abs()
+                if W.shape[1] != pred_concepts.shape[1]:
+                    importance = pred_concepts[i]
+                else:
+                    class_weights = W[pred_classes[i]]
+                    importance = pred_concepts[i] * class_weights.abs()
                 _, top5_idx = importance.topk(5)
 
                 masked = pred_concepts[i].clone()
@@ -168,7 +175,7 @@ def main():
         torch.load(CHECKPOINT_DIR / "baseline_best.pth", map_location=DEVICE, **TORCH_LOAD_KWARGS)
     )
 
-    cbm = ConceptBottleneckModel(num_concepts, num_classes).to(DEVICE)
+    cbm = ConceptBottleneckModel(num_concepts, num_classes, expand_dim=LABEL_EXPAND_DIM).to(DEVICE)
     ckpt = torch.load(CHECKPOINT_DIR / "cbm_best.pth", map_location=DEVICE, **TORCH_LOAD_KWARGS)
     cbm.concept_predictor.load_state_dict(ckpt["concept_model"])
     cbm.label_predictor.load_state_dict(ckpt["label_model"])

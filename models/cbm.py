@@ -14,10 +14,10 @@ from models.label_predictor import LabelPredictor
 class ConceptBottleneckModel(nn.Module):
     """Full CBM pipeline with intervention support."""
 
-    def __init__(self, num_concepts: int, num_classes: int):
+    def __init__(self, num_concepts: int, num_classes: int, expand_dim: int = 0):
         super().__init__()
         self.concept_predictor = ConceptPredictor(num_concepts)
-        self.label_predictor = LabelPredictor(num_concepts, num_classes)
+        self.label_predictor = LabelPredictor(num_concepts, num_classes, expand_dim)
 
     def forward(self, x, intervene_concepts=None):
         concept_probs, concept_logits = self.concept_predictor(x)

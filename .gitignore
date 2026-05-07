@@ -1,27 +1,19 @@
 # Python
 __pycache__/
-*.py[cod]
-*.egg-info/
+*.pyc
+*.pyo
 .venv/
-venv/
+*.egg-info/
 
-# Data & outputs (large files)
+# Node
+presentation/node_modules/
+
+# Dataset (large files)
 data/
-outputs/
 
-# IDE
-.idea/
-.vscode/
+# Training outputs
+outputs/
 
 # OS
 .DS_Store
 Thumbs.db
-
-# Model checkpoints
-*.pth
-*.pt
-
-# Node (unrelated)
-node_modules/
-package.json
-package-lock.json

@@ -87,7 +87,16 @@ LABEL_LR = 1e-3
 LABEL_WEIGHT_DECAY = 1e-4
 LABEL_EPOCHS = 20
 LABEL_BATCH_SIZE = 16
-LABEL_L1_LAMBDA = 0.01  # L1 regularization for sparsity
+LABEL_L1_LAMBDA = 0.001  # L1 regularization for sparsity (reduced from 0.01)
+LABEL_EXPAND_DIM = 128   # Hidden dim for MLP label predictor (0 = linear)
+
+# Early stopping patience (from official CBM implementation)
+EARLY_STOP_PATIENCE = 20
+
+# ── Adversarial Analysis ────────────────────────────────────────────
+ADVERSARIAL_EPSILONS = [0.0, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3]
+ADVERSARIAL_DEFENSE_TOP_K = [0, 1, 3, 5, 10, 20, 50]
+ADVERSARIAL_NUM_EXAMPLES = 6
 
 # ── Device ─────────────────────────────────────────────────────────────
 import torch

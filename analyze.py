@@ -20,7 +20,7 @@ from pathlib import Path
 from sklearn.metrics import confusion_matrix
 import itertools
 
-from config import DEVICE, CHECKPOINT_DIR, FIGURE_DIR, BASELINE_BATCH_SIZE, TORCH_LOAD_KWARGS
+from config import DEVICE, CHECKPOINT_DIR, FIGURE_DIR, BASELINE_BATCH_SIZE, TORCH_LOAD_KWARGS, LABEL_EXPAND_DIM
 from dataset import get_dataloaders
 from models.baseline import BaselineModel
 from models.cbm import ConceptBottleneckModel
@@ -75,7 +75,7 @@ def collect_predictions(model, loader, device, model_type="baseline"):
 
 def plot_weight_heatmap(cbm, attr_names, class_names, save_path):
     """Visualize label predictor weight matrix W [classes x concepts]."""
-    W = cbm.label_predictor.linear.weight.data.cpu().numpy()
+    W = cbm.label_predictor.weight_matrix.cpu().numpy()
 
     # Only show top-20 concepts per class for readability
     # Compute importance per concept (max absolute weight across classes)
@@ -168,7 +168,7 @@ def plot_accuracy_explainability_pareto(baseline_acc, cbm_acc, save_path):
 
 def plot_global_explanation(cbm, attr_names, class_names, save_path, top_k=5):
     """Global explanation: top concepts per class as a grouped bar chart."""
-    W = cbm.label_predictor.linear.weight.data.cpu().numpy()
+    W = cbm.label_predictor.weight_matrix.cpu().numpy()
     num_classes = W.shape[0]
 
     # Select 6 representative classes for readability
@@ -213,7 +213,7 @@ def main():
         torch.load(CHECKPOINT_DIR / "baseline_best.pth", map_location=DEVICE, **TORCH_LOAD_KWARGS)
     )
 
-    cbm = ConceptBottleneckModel(num_concepts, num_classes).to(DEVICE)
+    cbm = ConceptBottleneckModel(num_concepts, num_classes, expand_dim=LABEL_EXPAND_DIM).to(DEVICE)
     ckpt = torch.load(CHECKPOINT_DIR / "cbm_best.pth", map_location=DEVICE, **TORCH_LOAD_KWARGS)
     cbm.concept_predictor.load_state_dict(ckpt["concept_model"])
     cbm.label_predictor.load_state_dict(ckpt["label_model"])
