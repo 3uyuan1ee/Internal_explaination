@@ -98,7 +98,7 @@ if torch.cuda.is_available():
     torch.backends.cudnn.benchmark = True
     torch.backends.cudnn.deterministic = False
     print(f"[GPU] Using {torch.cuda.get_device_name(0)}")
-    print(f"[GPU] VRAM: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f} GB")
+    print(f"[GPU] VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
 else:
     print("[GPU] CUDA not available, using CPU")
 
