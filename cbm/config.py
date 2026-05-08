@@ -88,7 +88,9 @@ LABEL_WEIGHT_DECAY = 1e-4
 LABEL_EPOCHS = 20
 LABEL_BATCH_SIZE = 16
 LABEL_L1_LAMBDA = 0.001  # L1 regularization for sparsity (reduced from 0.01)
-LABEL_EXPAND_DIM = 128   # Hidden dim for MLP label predictor (0 = linear)
+LABEL_EXPAND_DIM = 0     # MUST be 0 for interpretability. Linear layer weight matrix
+                          # [num_classes, num_concepts] is directly interpretable as concept
+                          # importance per class. MLP (expand_dim > 0) breaks this.
 
 # Early stopping patience (from official CBM implementation)
 EARLY_STOP_PATIENCE = 20

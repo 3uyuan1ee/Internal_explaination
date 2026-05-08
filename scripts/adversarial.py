@@ -31,6 +31,7 @@ from cbm.config import (
     DEVICE, CHECKPOINT_DIR, FIGURE_DIR, BASELINE_BATCH_SIZE,
     ADVERSARIAL_EPSILONS, ADVERSARIAL_DEFENSE_TOP_K,
     IMAGENET_MEAN, IMAGENET_STD, TORCH_LOAD_KWARGS,
+    LABEL_EXPAND_DIM,
 )
 from cbm.dataset import get_dataloaders
 from cbm.models.baseline import BaselineModel
@@ -388,7 +389,7 @@ def main():
     )
     baseline.eval()
 
-    cbm = ConceptBottleneckModel(num_concepts, num_classes).to(DEVICE)
+    cbm = ConceptBottleneckModel(num_concepts, num_classes, expand_dim=LABEL_EXPAND_DIM).to(DEVICE)
     ckpt = torch.load(CHECKPOINT_DIR / "cbm_best.pth", map_location=DEVICE, **TORCH_LOAD_KWARGS)
     cbm.concept_predictor.load_state_dict(ckpt["concept_model"])
     cbm.label_predictor.load_state_dict(ckpt["label_model"])

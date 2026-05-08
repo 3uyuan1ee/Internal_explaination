@@ -48,7 +48,11 @@ def generate_concept_explanation(cbm, image_tensor, attr_names, class_names, top
     pred_class = class_logits.argmax(1).item()
     pred_confidence = torch.softmax(class_logits, 1).max().item()
 
-    W = cbm.label_predictor.weight_matrix[pred_class]
+    W = cbm.label_predictor.weight_matrix[pred_class]  # [num_concepts]
+    assert W.shape == concept_probs.squeeze().shape, (
+        f"Weight shape {W.shape} != concept shape {concept_probs.squeeze().shape}. "
+        f"Set LABEL_EXPAND_DIM=0 for interpretability."
+    )
     importance = concept_probs.squeeze().cpu() * W.cpu().abs()
     topk_values, topk_indices = importance.topk(top_k)
 

@@ -67,6 +67,7 @@ def intervention_experiment(model, loader, device):
         "all_correct": [],
     }
 
+    torch.manual_seed(42)  # Reproducible random flips
     with torch.no_grad():
         for images, true_concepts, true_labels in tqdm(loader, desc="Intervention"):
             images = images.to(device)
@@ -103,13 +104,13 @@ def intervention_experiment(model, loader, device):
             )
 
             # 5. Correct top-5 most important concepts
-            W = model.label_predictor.weight_matrix
-            if W.shape[1] != pred_concepts.shape[1]:
-                # MLP mode: use gradient-based importance instead
-                importance = pred_concepts
-            else:
-                class_weights = W[pred_classes]
-                importance = pred_concepts * class_weights.abs()
+            W = model.label_predictor.weight_matrix  # [num_classes, num_concepts]
+            assert W.shape[1] == pred_concepts.shape[1], (
+                f"Weight dim {W.shape[1]} != concept dim {pred_concepts.shape[1]}. "
+                f"Set LABEL_EXPAND_DIM=0 for interpretable weights."
+            )
+            class_weights = W[pred_classes]
+            importance = pred_concepts * class_weights.abs()
             _, top5_idx = importance.topk(5, dim=1)
 
             corrected = pred_concepts.clone()
@@ -137,13 +138,14 @@ def concept_fidelity(model, loader, device):
             pred_concepts, pred_logits = model(images)
             pred_classes = pred_logits.argmax(1)
 
-            W = model.label_predictor.weight_matrix
+            W = model.label_predictor.weight_matrix  # [num_classes, num_concepts]
+            assert W.shape[1] == pred_concepts.shape[1], (
+                f"Weight dim {W.shape[1]} != concept dim {pred_concepts.shape[1]}. "
+                f"Set LABEL_EXPAND_DIM=0 for interpretable weights."
+            )
             for i in range(images.size(0)):
-                if W.shape[1] != pred_concepts.shape[1]:
-                    importance = pred_concepts[i]
-                else:
-                    class_weights = W[pred_classes[i]]
-                    importance = pred_concepts[i] * class_weights.abs()
+                class_weights = W[pred_classes[i]]
+                importance = pred_concepts[i] * class_weights.abs()
                 _, top5_idx = importance.topk(5)
 
                 masked = pred_concepts[i].clone()

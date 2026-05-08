@@ -143,10 +143,16 @@ class CUBDataset(Dataset):
         label:        int — local class index (0-23)
     """
 
-    def __init__(self, train: bool = True):
+    def __init__(self, train: bool = True, valid_attr_indices=None, filtered_attr_names=None):
         (self.id_to_path, self.id_to_class, self.raw_attributes,
          self.id_to_split, self.attr_names, self.valid_attr_indices,
          self.class_names) = _parse_cub_annotations(DATA_DIR, SELECTED_CLASSES)
+
+        # Use pre-computed attribute filters if provided (avoids re-computation
+        # and ensures train/test use identical attribute sets)
+        if valid_attr_indices is not None:
+            self.valid_attr_indices = valid_attr_indices
+            self.attr_names = filtered_attr_names
 
         self.transform = get_transforms(train)
 
@@ -185,13 +191,11 @@ class CUBDataset(Dataset):
 def get_dataloaders(batch_size: int = 32, num_workers: int = 2):
     """Create train and test dataloaders."""
     train_dataset = CUBDataset(train=True)
-    test_dataset = CUBDataset(train=False)
-
-    # Share filtered attribute info (same for both splits)
-    assert train_dataset.valid_attr_indices is not None
-    test_dataset.valid_attr_indices = train_dataset.valid_attr_indices
-    test_dataset.attr_names = train_dataset.attr_names
-    test_dataset.num_concepts = train_dataset.num_concepts
+    test_dataset = CUBDataset(
+        train=False,
+        valid_attr_indices=train_dataset.valid_attr_indices,
+        filtered_attr_names=train_dataset.attr_names,
+    )
 
     pin_mem = torch.cuda.is_available()
     train_loader = torch.utils.data.DataLoader(

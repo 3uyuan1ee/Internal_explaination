@@ -58,9 +58,9 @@ def train_one_epoch(label_model, loader, criterion, optimizer, device, scaler=No
             loss.backward()
             optimizer.step()
 
-        loss_meter.update(loss.item(), images.size(0))
+        loss_meter.update(loss.item(), labels.size(0))
         correct = (logits.argmax(1) == labels).sum().item()
-        acc_meter.update(correct / images.size(0) * 100, images.size(0))
+        acc_meter.update(correct / labels.size(0) * 100, labels.size(0))
 
     return loss_meter.avg, acc_meter.avg
 

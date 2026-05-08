@@ -24,8 +24,20 @@ class LabelPredictor(nn.Module):
 
     @property
     def weight_matrix(self):
-        """Return the weight matrix for concept importance analysis."""
+        """Return the weight matrix for concept importance analysis.
+
+        Only valid when expand_dim == 0 (linear mode). In MLP mode, the
+        weight matrix is [num_classes, expand_dim] and cannot be interpreted
+        as per-concept importance.
+        """
         if self.expand_dim > 0:
+            import warnings
+            warnings.warn(
+                f"weight_matrix returns shape {self.fc2.weight.data.shape} "
+                f"with expand_dim={self.expand_dim}. This is NOT interpretable "
+                f"as concept importance. Set LABEL_EXPAND_DIM=0 for interpretability.",
+                stacklevel=2,
+            )
             return self.fc2.weight.data  # [num_classes, expand_dim]
         return self.linear.weight.data  # [num_classes, num_concepts]
 
