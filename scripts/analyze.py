@@ -246,7 +246,7 @@ def plot_concept_tsne(cbm, loader, class_names, device, save_path):
     all_concepts = np.concatenate(all_concepts)
     all_labels = np.concatenate(all_labels)
 
-    tsne = TSNE(n_components=2, perplexity=30, random_state=42, n_iter=1000)
+    tsne = TSNE(n_components=2, perplexity=30, random_state=42, max_iter=1000)
     embedded = tsne.fit_transform(all_concepts)
 
     fig, ax = plt.subplots(figsize=(10, 8))
