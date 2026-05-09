@@ -11,7 +11,7 @@ from torch.utils.data import Dataset
 from PIL import Image
 from pathlib import Path
 
-from config import (
+from .config import (
     DATA_DIR, ATTR_NAMES_FILE, SELECTED_CLASSES, MIN_ATTRIBUTE_VARIANCE,
     RESIZE_SIZE, IMAGE_SIZE, IMAGENET_MEAN, IMAGENET_STD,
 )
