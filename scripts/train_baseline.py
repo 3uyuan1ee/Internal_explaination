@@ -81,17 +81,23 @@ def main():
         model.parameters(), lr=BASELINE_LR,
         momentum=BASELINE_MOMENTUM, weight_decay=BASELINE_WEIGHT_DECAY,
     )
-    scheduler = StepLR(optimizer, step_size=20, gamma=0.1)
+    scheduler = StepLR(optimizer, step_size=15, gamma=0.1)
     scaler = torch.amp.GradScaler("cuda", enabled=USE_AMP)
 
     best_acc = 0.0
     best_epoch = 0
+    history = {"epochs": [], "train_loss": [], "train_acc": [], "test_acc": []}
     for epoch in range(1, BASELINE_EPOCHS + 1):
         train_loss, train_acc = train_one_epoch(
             model, train_loader, criterion, optimizer, DEVICE, scaler
         )
         test_acc = evaluate(model, test_loader, DEVICE)
         scheduler.step()
+
+        history["epochs"].append(epoch)
+        history["train_loss"].append(train_loss)
+        history["train_acc"].append(train_acc)
+        history["test_acc"].append(test_acc)
 
         print(f"Epoch {epoch:3d}/{BASELINE_EPOCHS} | "
               f"Loss: {train_loss:.4f} | "
@@ -109,6 +115,7 @@ def main():
             print(f"Early stopping at epoch {epoch} (best was {best_epoch})")
             break
 
+    torch.save(history, CHECKPOINT_DIR / "baseline_history.pth")
     print(f"\nBest test accuracy: {best_acc:.2f}%")
 
 

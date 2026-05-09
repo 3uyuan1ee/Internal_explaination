@@ -113,6 +113,7 @@ def main():
 
     best_acc = 0.0
     best_epoch = 0
+    history = {"epochs": [], "train_loss": [], "train_acc": [], "test_acc": [], "sparsity": []}
     for epoch in range(1, LABEL_EPOCHS + 1):
         train_loss, train_acc = train_one_epoch(
             label_model, train_loader, criterion, optimizer, DEVICE, scaler
@@ -126,6 +127,12 @@ def main():
         else:
             W = label_model.linear.weight.data
         sparsity = (W.abs() < 0.01).float().mean().item()
+
+        history["epochs"].append(epoch)
+        history["train_loss"].append(train_loss)
+        history["train_acc"].append(train_acc)
+        history["test_acc"].append(test_acc)
+        history["sparsity"].append(sparsity)
 
         print(f"Epoch {epoch:3d}/{LABEL_EPOCHS} | "
               f"Loss: {train_loss:.4f} | "
@@ -151,6 +158,8 @@ def main():
         if epoch - best_epoch >= EARLY_STOP_PATIENCE:
             print(f"Early stopping at epoch {epoch} (best was {best_epoch})")
             break
+
+    torch.save(history, CHECKPOINT_DIR / "label_history.pth")
 
     print(f"\nBest test accuracy: {best_acc:.2f}%")
 

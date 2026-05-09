@@ -73,19 +73,19 @@ IMAGENET_STD = [0.229, 0.224, 0.225]
 BASELINE_LR = 1e-3
 BASELINE_MOMENTUM = 0.9
 BASELINE_WEIGHT_DECAY = 1e-4
-BASELINE_EPOCHS = 20
+BASELINE_EPOCHS = 50
 BASELINE_BATCH_SIZE = 16
 
 # Concept predictor (Stage 1)
 CONCEPT_LR = 1e-4
 CONCEPT_WEIGHT_DECAY = 1e-4
-CONCEPT_EPOCHS = 20
+CONCEPT_EPOCHS = 40
 CONCEPT_BATCH_SIZE = 16
 
 # Label predictor (Stage 2)
 LABEL_LR = 1e-3
 LABEL_WEIGHT_DECAY = 1e-4
-LABEL_EPOCHS = 20
+LABEL_EPOCHS = 50
 LABEL_BATCH_SIZE = 16
 LABEL_L1_LAMBDA = 0.001  # L1 regularization for sparsity (reduced from 0.01)
 LABEL_EXPAND_DIM = 0     # MUST be 0 for interpretability. Linear layer weight matrix
@@ -93,7 +93,7 @@ LABEL_EXPAND_DIM = 0     # MUST be 0 for interpretability. Linear layer weight m
                           # importance per class. MLP (expand_dim > 0) breaks this.
 
 # Early stopping patience (from official CBM implementation)
-EARLY_STOP_PATIENCE = 20
+EARLY_STOP_PATIENCE = 10
 
 # ── Adversarial Analysis ────────────────────────────────────────────
 ADVERSARIAL_EPSILONS = [0.0, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3]

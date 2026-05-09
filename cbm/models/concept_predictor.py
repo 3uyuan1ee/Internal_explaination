@@ -18,8 +18,11 @@ class ConceptPredictor(nn.Module):
         resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
         # Remove the final FC layer, keep everything up to avgpool
         self.encoder = nn.Sequential(*list(resnet.children())[:-1])
+        # Freeze pretrained backbone (official CBM pattern)
+        for param in self.encoder.parameters():
+            param.requires_grad = False
         self.flatten = nn.Flatten()
-        # Concept prediction head
+        # Concept prediction head (only trainable part)
         self.concept_head = nn.Sequential(
             nn.Linear(512, 256),
             nn.ReLU(),

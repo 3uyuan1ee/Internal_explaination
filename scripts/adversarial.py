@@ -139,15 +139,16 @@ def concept_stability_analysis(cbm, loader, device, epsilon, attr_names):
     all_changes = []
     cbm.eval()
 
-    for images, concepts, _ in tqdm(loader, desc="Stability", leave=False):
+    for images, concepts, labels in tqdm(loader, desc="Stability", leave=False):
         images = images.to(device)
+        labels = labels.to(device)
         for i in range(images.size(0)):
             with torch.no_grad():
                 clean_concepts, _ = cbm(images[i:i+1])
                 clean_concepts = clean_concepts.squeeze()
 
             perturbed, perturbed_concepts = attack_cbm(
-                cbm, images[i], torch.tensor(0), epsilon, device
+                cbm, images[i], labels[i], epsilon, device
             )
             change = (perturbed_concepts - clean_concepts).abs().cpu().numpy()
             all_changes.append(change)

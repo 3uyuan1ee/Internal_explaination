@@ -28,30 +28,48 @@ from cbm.models.cbm import ConceptBottleneckModel
 def evaluate_baseline(model, loader, device):
     model.eval()
     correct, total = 0, 0
+    per_class_correct = {}
+    per_class_total = {}
     with torch.no_grad():
         for images, _, labels in loader:
             images, labels = images.to(device), labels.to(device)
             logits = model(images)
-            correct += (logits.argmax(1) == labels).sum().item()
+            preds = logits.argmax(1)
+            correct += (preds == labels).sum().item()
             total += images.size(0)
-    return correct / total
+            for t, p in zip(labels.cpu().numpy(), preds.cpu().numpy()):
+                per_class_total[t] = per_class_total.get(t, 0) + 1
+                if t == p:
+                    per_class_correct[t] = per_class_correct.get(t, 0) + 1
+    per_class_acc = {k: per_class_correct.get(k, 0) / per_class_total[k]
+                     for k in per_class_total}
+    return correct / total, per_class_acc
 
 
 def evaluate_cbm(model, loader, device):
     model.eval()
     correct, total = 0, 0
     concept_correct, concept_total = 0, 0
+    per_class_correct = {}
+    per_class_total = {}
     with torch.no_grad():
         for images, concepts, labels in loader:
             images = images.to(device)
             concepts = concepts.to(device)
             labels = labels.to(device)
             pred_concepts, logits = model(images)
-            correct += (logits.argmax(1) == labels).sum().item()
+            preds = logits.argmax(1)
+            correct += (preds == labels).sum().item()
             total += images.size(0)
             concept_correct += ((pred_concepts > 0.5).float() == concepts).sum().item()
             concept_total += concepts.numel()
-    return correct / total, concept_correct / concept_total
+            for t, p in zip(labels.cpu().numpy(), preds.cpu().numpy()):
+                per_class_total[t] = per_class_total.get(t, 0) + 1
+                if t == p:
+                    per_class_correct[t] = per_class_correct.get(t, 0) + 1
+    per_class_acc = {k: per_class_correct.get(k, 0) / per_class_total[k]
+                     for k in per_class_total}
+    return correct / total, concept_correct / concept_total, per_class_acc
 
 
 # ── Intervention Experiments ───────────────────────────────────────────
@@ -188,12 +206,23 @@ def main():
 
     # 2. Accuracy comparison
     print("\n--- Accuracy Comparison ---")
-    baseline_acc = evaluate_baseline(baseline, test_loader, DEVICE)
-    cbm_acc, concept_acc = evaluate_cbm(cbm, test_loader, DEVICE)
+    baseline_acc, bl_per_class = evaluate_baseline(baseline, test_loader, DEVICE)
+    cbm_acc, concept_acc, cbm_per_class = evaluate_cbm(cbm, test_loader, DEVICE)
     print(f"  Baseline (ResNet-18):  {baseline_acc:.4f}")
     print(f"  CBM Classification:   {cbm_acc:.4f}")
     print(f"  CBM Concept Accuracy: {concept_acc:.4f}")
     print(f"  Accuracy drop:        {baseline_acc - cbm_acc:.4f} ({(baseline_acc - cbm_acc) / baseline_acc:.2%})")
+
+    # Per-class accuracy breakdown
+    print("\n--- Per-Class Accuracy ---")
+    print(f"  {'Class':25s} {'Baseline':>10s} {'CBM':>10s} {'Diff':>10s}")
+    print("  " + "-" * 57)
+    for c in sorted(bl_per_class.keys()):
+        bl_a = bl_per_class.get(c, 0)
+        cbm_a = cbm_per_class.get(c, 0)
+        diff = cbm_a - bl_a
+        marker = " +" if diff > 0.05 else (" -" if diff < -0.05 else "  ")
+        print(f"  {dataset.class_names.get(c, f'Class {c}'):25s} {bl_a:10.2%} {cbm_a:10.2%} {marker}{diff:+.2%}")
 
     # 3. Intervention experiments
     print("\n--- Intervention Experiments ---")
@@ -215,6 +244,8 @@ def main():
     print(f"  (Higher = concepts are more faithfully used)")
 
     # 5. Save results
+    W = cbm.label_predictor.weight_matrix
+    weight_sparsity = (W.abs() < 0.01).float().mean().item()
     results = {
         "baseline_acc": baseline_acc,
         "cbm_acc": cbm_acc,
@@ -222,6 +253,7 @@ def main():
         "accuracy_drop": baseline_acc - cbm_acc,
         "intervention": interv,
         "concept_fidelity": fidelity,
+        "weight_sparsity": weight_sparsity,
     }
     torch.save(results, FIGURE_DIR / "evaluation_results.pth")
     print(f"\nResults saved to {FIGURE_DIR / 'evaluation_results.pth'}")

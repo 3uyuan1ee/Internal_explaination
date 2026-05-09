@@ -100,19 +100,29 @@ def main():
     print(f"Attribute pos_weight range: [{pos_weight.min():.2f}, {pos_weight.max():.2f}]")
 
     model = ConceptPredictor(num_concepts=num_concepts).to(DEVICE)
+    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    total = sum(p.numel() for p in model.parameters())
+    print(f"Trainable params: {trainable:,} / {total:,} ({trainable/total:.1%})")
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-    optimizer = Adam(model.parameters(), lr=CONCEPT_LR, weight_decay=CONCEPT_WEIGHT_DECAY)
+    optimizer = Adam(filter(lambda p: p.requires_grad, model.parameters()),
+                     lr=CONCEPT_LR, weight_decay=CONCEPT_WEIGHT_DECAY)
     scheduler = CosineAnnealingLR(optimizer, T_max=CONCEPT_EPOCHS)
     scaler = torch.amp.GradScaler("cuda", enabled=USE_AMP)
 
     best_acc = 0.0
     best_epoch = 0
+    history = {"epochs": [], "train_loss": [], "train_acc": [], "test_acc": []}
     for epoch in range(1, CONCEPT_EPOCHS + 1):
         train_loss, train_acc = train_one_epoch(
             model, train_loader, criterion, optimizer, DEVICE, scaler
         )
         test_acc, per_concept = evaluate(model, test_loader, DEVICE)
         scheduler.step()
+
+        history["epochs"].append(epoch)
+        history["train_loss"].append(train_loss)
+        history["train_acc"].append(train_acc)
+        history["test_acc"].append(test_acc)
 
         print(f"Epoch {epoch:3d}/{CONCEPT_EPOCHS} | "
               f"Loss: {train_loss:.4f} | "
@@ -135,17 +145,50 @@ def main():
             print(f"Early stopping at epoch {epoch} (best was {best_epoch})")
             break
 
+    torch.save(history, CHECKPOINT_DIR / "concept_history.pth")
+
     print(f"\nBest concept accuracy: {best_acc:.2f}%")
 
-    # Print top-5 easiest and hardest concepts
+    # Compute per-concept AUC
+    from sklearn.metrics import roc_auc_score
+    model.eval()
+    all_probs, all_targets = [], []
+    with torch.no_grad():
+        for images, concepts, _ in test_loader:
+            images = images.to(DEVICE)
+            probs, _ = model(images)
+            all_probs.append(probs.cpu())
+            all_targets.append(concepts)
+    all_probs = torch.cat(all_probs).numpy()
+    all_targets = torch.cat(all_targets).numpy()
+
+    per_concept_auc = np.zeros(all_probs.shape[1])
+    for j in range(all_probs.shape[1]):
+        if len(np.unique(all_targets[:, j])) > 1:
+            per_concept_auc[j] = roc_auc_score(all_targets[:, j], all_probs[:, j])
+        else:
+            per_concept_auc[j] = float("nan")
+    mean_auc = np.nanmean(per_concept_auc)
+    print(f"Mean per-concept AUC: {mean_auc:.4f}")
+
+    # Save AUC in checkpoint
+    ckpt = torch.load(CHECKPOINT_DIR / "concept_predictor_best.pth",
+                       map_location="cpu", **{"weights_only": False})
+    ckpt["per_concept_auc"] = per_concept_auc
+    ckpt["mean_auc"] = mean_auc
+    torch.save(ckpt, CHECKPOINT_DIR / "concept_predictor_best.pth")
+
+    # Print top-5 easiest and hardest concepts (by AUC)
     _, per_concept = evaluate(model, test_loader, DEVICE)
     sorted_idx = per_concept.argsort()
-    print("\n--- Easiest concepts ---")
-    for i in sorted_idx[-5:].flip(0):
-        print(f"  {dataset.attr_names[i]:40s} acc={per_concept[i]:.3f}")
-    print("--- Hardest concepts ---")
-    for i in sorted_idx[:5]:
-        print(f"  {dataset.attr_names[i]:40s} acc={per_concept[i]:.3f}")
+    sorted_auc_idx = np.argsort(per_concept_auc)
+    print("\n--- Easiest concepts (by AUC) ---")
+    for i in sorted_auc_idx[-5:][::-1]:
+        print(f"  {dataset.attr_names[i]:40s} AUC={per_concept_auc[i]:.3f}  acc={per_concept[i]:.3f}")
+    print("--- Hardest concepts (by AUC) ---")
+    for i in sorted_auc_idx[:5]:
+        valid = " " if not np.isnan(per_concept_auc[i]) else " (single-class)"
+        print(f"  {dataset.attr_names[i]:40s} AUC={per_concept_auc[i]:.3f}  acc={per_concept[i]:.3f}{valid}")
 
 
 if __name__ == "__main__":
