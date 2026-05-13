@@ -1,119 +1,80 @@
 """
-Global configuration for Concept Bottleneck Model experiment.
+Global configuration for CBM experiment (50 classes, InceptionV3).
 """
-
 import os
+import torch
 from pathlib import Path
 
 # ── Paths ──────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
-# Standard CUB-200-2011 tgz extracts to CUB_200_2011/
 _CUB_DIR = BASE_DIR / "data" / "CUB_200_2011"
 if not _CUB_DIR.exists():
-    _CUB_DIR = BASE_DIR / "data" / "CUB-200-2011"  # fallback for renamed dir
+    _CUB_DIR = BASE_DIR / "data" / "CUB-200-2011"
 DATA_DIR = _CUB_DIR
-# Attribute names file is at data/ level (outside CUB subdir)
 ATTR_NAMES_FILE = BASE_DIR / "data" / "attributes.txt"
 OUTPUT_DIR = BASE_DIR / "outputs"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 FIGURE_DIR = OUTPUT_DIR / "figures"
-LOG_DIR = OUTPUT_DIR / "logs"
+RESULTS_DIR = OUTPUT_DIR / "results"
 
-# CUB dataset annotation files
+# CUB annotation files
 IMAGE_LIST_FILE = DATA_DIR / "images.txt"
 TRAIN_TEST_SPLIT_FILE = DATA_DIR / "train_test_split.txt"
 CLASS_LABELS_FILE = DATA_DIR / "image_class_labels.txt"
 CLASSES_FILE = DATA_DIR / "classes.txt"
 ATTRIBUTES_FILE = DATA_DIR / "attributes" / "image_attribute_labels.txt"
-ATTRIBUTE_NAMES_FILE = DATA_DIR / "attributes" / "attributes.txt"
 
-# ── Selected Classes (24 species) ──────────────────────────────────────
-# Maps original 1-indexed class IDs to local 0-indexed IDs
-SELECTED_CLASSES = {
-    16: 0,   # Ovenbird
-    17: 1,   # Groove-billed Ani
-    22: 2,   # Sayornis
-    36: 3,   # Northern Flicker
-    47: 4,   # American Robin
-    49: 5,   # European Starling
-    55: 6,   # Purple Finch
-    62: 7,   # American Goldfinch
-    63: 8,   # House Sparrow
-    68: 9,   # Cliff Swallow
-    73: 10,  # Blue Jay
-    85: 11,  # Northern Mockingbird
-    96: 12,  # Northern Cardinal
-    100: 13, # Brown-headed Cowbird
-    104: 14, # Baltimore Oriole
-    112: 15, # Great Crested Flycatcher
-    122: 16, # White-breasted Nuthatch
-    124: 17, # House Wren
-    134: 18, # Cedar Waxwing
-    161: 19, # Mourning Warbler
-    166: 20, # American Redstart
-    178: 21, # Blue-headed Vireo
-    189: 22, # Pine Siskin
-    196: 23, # House Finch
-}
+# ── 50 Class Selection ────────────────────────────────────────────────
+SEED = 42
+NUM_CLASSES = 50
+SELECTED_CLASSES = None  # {original_1indexed_id: local_0indexed_id}
 
-NUM_CLASSES = len(SELECTED_CLASSES)  # 24
+# ── Attribute Filtering ───────────────────────────────────────────────
+MIN_ATTRIBUTE_VARIANCE = 0.05
+MIN_CERTAINTY = 3
 
-# ── Attribute Filtering ────────────────────────────────────────────────
-MIN_ATTRIBUTE_VARIANCE = 0.05  # Remove attributes with near-zero variance
-
-# ── Image Preprocessing ────────────────────────────────────────────────
-IMAGE_SIZE = 224
-RESIZE_SIZE = 256
+# ── Image Preprocessing (InceptionV3 uses 299×299) ────────────────────
+IMAGE_SIZE = 299
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 
-# ── Training Hyperparameters ───────────────────────────────────────────
+# ── Concept Predictor Training ────────────────────────────────────────
+CONCEPT_LR = 0.01
+CONCEPT_MOMENTUM = 0.9
+CONCEPT_WEIGHT_DECAY = 4e-5
+CONCEPT_EPOCHS = 1000
+CONCEPT_BATCH_SIZE = 32
+CONCEPT_SCHEDULER_STEP = 300
+CONCEPT_SCHEDULER_GAMMA = 0.1
+EARLY_STOP_PATIENCE = 100
 
-# Baseline model
-BASELINE_LR = 1e-3
-BASELINE_MOMENTUM = 0.9
-BASELINE_WEIGHT_DECAY = 1e-4
-BASELINE_EPOCHS = 50
-BASELINE_BATCH_SIZE = 16
+# ── Label Predictor Training ──────────────────────────────────────────
+# Elastic Net regularization: L2 via weight_decay + L1 via L1_LAMBDA
+LABEL_LR = 0.001
+LABEL_WEIGHT_DECAY = 5e-5       # L2 regularization (weight decay)
+LABEL_EPOCHS = 500
+LABEL_BATCH_SIZE = 32
+LABEL_SCHEDULER_STEP = 500
+LABEL_SCHEDULER_GAMMA = 0.1
+LABEL_L1_LAMBDA = 0.0001        # L1 regularization for sparse, interpretable weights
 
-# Concept predictor (Stage 1)
-CONCEPT_LR = 1e-4
-CONCEPT_WEIGHT_DECAY = 1e-4
-CONCEPT_EPOCHS = 40
-CONCEPT_BATCH_SIZE = 16
+# ── Intervention Experiments ──────────────────────────────────────────
+INTERVENTION_K_VALUES = [0, 1, 2, 3, 5, 8, 10, 15, 20, 30, 50, -1]
+RANDOM_TRIALS = 10
+NOISE_LEVELS = [0.0, 0.05, 0.1, 0.2, 0.3, 0.5]
+NOISE_BUDGETS = [5, 10, 20]
 
-# Label predictor (Stage 2)
-LABEL_LR = 1e-3
-LABEL_WEIGHT_DECAY = 1e-4
-LABEL_EPOCHS = 50
-LABEL_BATCH_SIZE = 16
-LABEL_L1_LAMBDA = 0.001  # L1 regularization for sparsity (reduced from 0.01)
-LABEL_EXPAND_DIM = 0     # MUST be 0 for interpretability. Linear layer weight matrix
-                          # [num_classes, num_concepts] is directly interpretable as concept
-                          # importance per class. MLP (expand_dim > 0) breaks this.
-
-# Early stopping patience (from official CBM implementation)
-EARLY_STOP_PATIENCE = 10
-
-# ── Adversarial Analysis ────────────────────────────────────────────
-ADVERSARIAL_EPSILONS = [0.0, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3]
-ADVERSARIAL_DEFENSE_TOP_K = [0, 1, 3, 5, 10, 20, 50]
-ADVERSARIAL_NUM_EXAMPLES = 6
-
-# ── Device ─────────────────────────────────────────────────────────────
-import torch
+# ── Device ────────────────────────────────────────────────────────────
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+USE_AMP = torch.cuda.is_available()
+TORCH_LOAD_KWARGS = {"weights_only": False}
 
-# GPU optimizations
 if torch.cuda.is_available():
     torch.backends.cudnn.benchmark = True
-    torch.backends.cudnn.deterministic = False
-    print(f"[GPU] Using {torch.cuda.get_device_name(0)}")
-    print(f"[GPU] VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+    print(f"[GPU] {torch.cuda.get_device_name(0)}")
 else:
     print("[GPU] CUDA not available, using CPU")
 
-USE_AMP = torch.cuda.is_available()  # Mixed precision only on GPU
-
-# PyTorch >= 2.6 defaults to weights_only=True; our checkpoints contain dicts
-TORCH_LOAD_KWARGS = {"weights_only": False}
+# ── Output dirs ───────────────────────────────────────────────────────
+for d in [OUTPUT_DIR, CHECKPOINT_DIR, FIGURE_DIR, RESULTS_DIR]:
+    d.mkdir(parents=True, exist_ok=True)

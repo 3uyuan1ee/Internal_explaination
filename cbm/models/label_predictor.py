@@ -1,47 +1,18 @@
 """
-Label predictor: concepts -> class logits.
-
-Supports both linear and MLP modes. When expand_dim > 0, uses a 2-layer MLP
-(inspired by Koh et al., ICML 2020 official CBM implementation).
-When expand_dim == 0, falls back to a single interpretable linear layer.
+Label predictor: concepts -> class logits (linear, interpretable).
 """
-
 import torch
 import torch.nn as nn
 
 
 class LabelPredictor(nn.Module):
-
-    def __init__(self, num_concepts: int, num_classes: int, expand_dim: int = 0):
+    def __init__(self, num_concepts: int, num_classes: int):
         super().__init__()
-        self.expand_dim = expand_dim
-        if expand_dim > 0:
-            self.fc1 = nn.Linear(num_concepts, expand_dim)
-            self.relu = nn.ReLU()
-            self.fc2 = nn.Linear(expand_dim, num_classes)
-        else:
-            self.linear = nn.Linear(num_concepts, num_classes)
+        self.linear = nn.Linear(num_concepts, num_classes)
 
     @property
     def weight_matrix(self):
-        """Return the weight matrix for concept importance analysis.
-
-        Only valid when expand_dim == 0 (linear mode). In MLP mode, the
-        weight matrix is [num_classes, expand_dim] and cannot be interpreted
-        as per-concept importance.
-        """
-        if self.expand_dim > 0:
-            import warnings
-            warnings.warn(
-                f"weight_matrix returns shape {self.fc2.weight.data.shape} "
-                f"with expand_dim={self.expand_dim}. This is NOT interpretable "
-                f"as concept importance. Set LABEL_EXPAND_DIM=0 for interpretability.",
-                stacklevel=2,
-            )
-            return self.fc2.weight.data  # [num_classes, expand_dim]
         return self.linear.weight.data  # [num_classes, num_concepts]
 
     def forward(self, concepts):
-        if self.expand_dim > 0:
-            return self.fc2(self.relu(self.fc1(concepts)))
         return self.linear(concepts)

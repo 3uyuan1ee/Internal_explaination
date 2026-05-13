@@ -1,16 +1,16 @@
 """
-Visualization script for CBM V2 intervention experiment results.
+Visualization script for CBM intervention experiment results.
 
 Generates 6 core figures from the saved intervention results:
   Fig 1: Error Attribution Pie Chart
-  Fig 3: Intervention Efficiency Curves
-  Fig 4: Strategy AUC Bar Chart
-  Fig 5: k_min Distribution Histogram
-  Fig 7: Noise Degradation Curves
-  Fig 8: Budget x Strategy Heatmap
+  Fig 2: Intervention Efficiency Curves
+  Fig 3: Strategy AUC Bar Chart
+  Fig 4: k_min Distribution Histogram
+  Fig 5: Noise Degradation Curves
+  Fig 6: Budget x Strategy Heatmap
 
 Usage:
-    python scripts_v2/visualize.py
+    python scripts/visualize.py
 """
 
 import sys
@@ -26,20 +26,20 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 
-from cbm_v2.config import RESULTS_DIR, FIGURE_DIR, TORCH_LOAD_KWARGS
+from cbm.config import RESULTS_DIR, FIGURE_DIR, TORCH_LOAD_KWARGS
 
 # ---------------------------------------------------------------------------
 # Matplotlib global settings
 # ---------------------------------------------------------------------------
 plt.rcParams.update(
     {
-        "font.size": 12,
-        "axes.titlesize": 14,
-        "axes.labelsize": 13,
-        "xtick.labelsize": 11,
-        "ytick.labelsize": 11,
-        "legend.fontsize": 11,
-        "figure.dpi": 150,
+        "font.size": 13,
+        "axes.titlesize": 15,
+        "axes.labelsize": 14,
+        "xtick.labelsize": 12,
+        "ytick.labelsize": 12,
+        "legend.fontsize": 12,
+        "figure.dpi": 200,
     }
 )
 
@@ -123,7 +123,7 @@ def plot_fig1_error_pie(data):
     colors = ["#2ca02c", "#ff7f0e", "#d62728"]
     explode = (0, 0.05, 0.05)
 
-    fig, ax = plt.subplots(figsize=(7, 7))
+    fig, ax = plt.subplots(figsize=(8, 8))
     wedges, texts, autotexts = ax.pie(
         sizes,
         labels=labels,
@@ -150,9 +150,9 @@ def plot_fig1_error_pie(data):
 
 
 # ---------------------------------------------------------------------------
-# Fig 3: Intervention Efficiency Curves
+# Fig 2: Intervention Efficiency Curves
 # ---------------------------------------------------------------------------
-def plot_fig3_efficiency(data):
+def plot_fig2_efficiency(data):
     """Accuracy vs k for 5 strategies with CBM baseline and Oracle bound."""
     exp2 = data["exp2"]
     summary = exp2["summary"]
@@ -171,7 +171,7 @@ def plot_fig3_efficiency(data):
     cbm_baseline = (yhat_cbm == y).mean() * 100
     oracle_bound = (yhat_oracle == y).mean() * 100
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(12, 6.75))
 
     for strat_key, display_name in STRATEGY_MAP.items():
         accs = []
@@ -228,16 +228,16 @@ def plot_fig3_efficiency(data):
         ax.set_xticklabels(xticklabels)
 
     fig.tight_layout()
-    save_path = FIGURE_DIR / "fig3_intervention_efficiency.png"
+    save_path = FIGURE_DIR / "fig2_intervention_efficiency.png"
     fig.savefig(save_path, bbox_inches="tight")
     plt.close(fig)
-    print(f"[Fig 3] Saved to {save_path}")
+    print(f"[Fig 2] Saved to {save_path}")
 
 
 # ---------------------------------------------------------------------------
-# Fig 4: Strategy AUC Bar Chart
+# Fig 3: Strategy AUC Bar Chart
 # ---------------------------------------------------------------------------
-def plot_fig4_auc(data):
+def plot_fig3_auc(data):
     """Bar chart of AUC for each strategy using np.trapz."""
     exp2 = data["exp2"]
     summary = exp2["summary"]
@@ -254,7 +254,7 @@ def plot_fig4_auc(data):
     values = list(aucs.values())
     bar_colors = [COLORS[n] for n in names]
 
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(12, 6.75))
     bars = ax.bar(names, values, color=bar_colors, edgecolor="black", linewidth=0.5)
 
     # Value labels on top
@@ -277,16 +277,16 @@ def plot_fig4_auc(data):
     )
     ax.grid(axis="y", alpha=0.3)
     fig.tight_layout()
-    save_path = FIGURE_DIR / "fig4_strategy_auc.png"
+    save_path = FIGURE_DIR / "fig3_strategy_auc.png"
     fig.savefig(save_path, bbox_inches="tight")
     plt.close(fig)
-    print(f"[Fig 4] Saved to {save_path}")
+    print(f"[Fig 3] Saved to {save_path}")
 
 
 # ---------------------------------------------------------------------------
-# Fig 5: k_min Distribution Histogram
+# Fig 4: k_min Distribution Histogram
 # ---------------------------------------------------------------------------
-def plot_fig5_kmin(data):
+def plot_fig4_kmin(data):
     """Histogram of k_min values from experiment 3."""
     exp3 = data["exp3"]
     k_mins = np.asarray(exp3["per_sample_k"])
@@ -294,7 +294,7 @@ def plot_fig5_kmin(data):
     median_k = exp3["median"]
     k1_rate = (k_mins == 1).sum() / len(k_mins) * 100
 
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(12, 6.75))
 
     # Determine bins
     max_k = int(k_mins.max())
@@ -334,16 +334,16 @@ def plot_fig5_kmin(data):
     ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
 
     fig.tight_layout()
-    save_path = FIGURE_DIR / "fig5_kmin_distribution.png"
+    save_path = FIGURE_DIR / "fig4_kmin_distribution.png"
     fig.savefig(save_path, bbox_inches="tight")
     plt.close(fig)
-    print(f"[Fig 5] Saved to {save_path}")
+    print(f"[Fig 4] Saved to {save_path}")
 
 
 # ---------------------------------------------------------------------------
-# Fig 7: Noise Degradation Curves
+# Fig 5: Noise Degradation Curves
 # ---------------------------------------------------------------------------
-def plot_fig7_noise(data):
+def plot_fig5_noise(data):
     """Accuracy vs noise level for 3 strategies (budget=10)."""
     exp4 = data["exp4"]
     noise_summary = exp4["noise"]["summary"]
@@ -351,7 +351,7 @@ def plot_fig7_noise(data):
     # Collect noise levels from the data
     noise_levels = sorted(noise_summary["random"].keys())
 
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(12, 6.75))
 
     for strat_key in ["random", "uncertainty", "importance"]:
         display_name = STRATEGY_MAP[strat_key]
@@ -391,16 +391,16 @@ def plot_fig7_noise(data):
     ax.xaxis.set_major_formatter(mticker.PercentFormatter(xmax=1.0))
 
     fig.tight_layout()
-    save_path = FIGURE_DIR / "fig7_noise_degradation.png"
+    save_path = FIGURE_DIR / "fig5_noise_degradation.png"
     fig.savefig(save_path, bbox_inches="tight")
     plt.close(fig)
-    print(f"[Fig 7] Saved to {save_path}")
+    print(f"[Fig 5] Saved to {save_path}")
 
 
 # ---------------------------------------------------------------------------
-# Fig 8: Budget x Strategy Heatmap
+# Fig 6: Budget x Strategy Heatmap
 # ---------------------------------------------------------------------------
-def plot_fig8_budget_heatmap(data):
+def plot_fig6_budget_heatmap(data):
     """Heatmap of accuracy for budget x strategy combinations."""
     exp4 = data["exp4"]
     budget_summary = exp4["budget"]["summary"]
@@ -415,7 +415,7 @@ def plot_fig8_budget_heatmap(data):
         for j, b in enumerate(budgets):
             matrix[i, j] = budget_summary[sk][b]
 
-    fig, ax = plt.subplots(figsize=(7, 4))
+    fig, ax = plt.subplots(figsize=(8, 6))
     im = ax.imshow(matrix, cmap="YlGn", aspect="auto")
 
     # Tick labels
@@ -428,7 +428,7 @@ def plot_fig8_budget_heatmap(data):
     for i in range(len(strategies)):
         for j in range(len(budgets)):
             val = matrix[i, j]
-            text_color = "white" if val < matrix.mean() else "black"
+            text_color = "white" if val >= matrix.mean() else "black"
             ax.text(
                 j,
                 i,
@@ -449,10 +449,10 @@ def plot_fig8_budget_heatmap(data):
     )
     cbar = fig.colorbar(im, ax=ax, label="Accuracy (%)")
     fig.tight_layout()
-    save_path = FIGURE_DIR / "fig8_budget_strategy_heatmap.png"
+    save_path = FIGURE_DIR / "fig6_budget_strategy_heatmap.png"
     fig.savefig(save_path, bbox_inches="tight")
     plt.close(fig)
-    print(f"[Fig 8] Saved to {save_path}")
+    print(f"[Fig 6] Saved to {save_path}")
 
 
 # ---------------------------------------------------------------------------
@@ -460,7 +460,7 @@ def plot_fig8_budget_heatmap(data):
 # ---------------------------------------------------------------------------
 def main():
     print("=" * 60)
-    print("CBM V2 — Visualization: 6 Core Figures")
+    print("CBM — Visualization: 6 Core Figures")
     print("=" * 60)
 
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)
@@ -468,11 +468,11 @@ def main():
     data = load_results()
 
     plot_fig1_error_pie(data)
-    plot_fig3_efficiency(data)
-    plot_fig4_auc(data)
-    plot_fig5_kmin(data)
-    plot_fig7_noise(data)
-    plot_fig8_budget_heatmap(data)
+    plot_fig2_efficiency(data)
+    plot_fig3_auc(data)
+    plot_fig4_kmin(data)
+    plot_fig5_noise(data)
+    plot_fig6_budget_heatmap(data)
 
     print(f"\n[Done] All 6 figures saved to {FIGURE_DIR}/")
 

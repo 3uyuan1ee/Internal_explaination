@@ -8,7 +8,7 @@ Experiments:
   4. Noisy experts — robustness to noise and budget constraints
 
 Usage:
-    python scripts_v2/run_interventions.py
+    python scripts/run_interventions.py
 """
 
 import sys
@@ -22,13 +22,13 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from cbm_v2.config import (
+from cbm.config import (
     DEVICE, CHECKPOINT_DIR, RESULTS_DIR, TORCH_LOAD_KWARGS,
     INTERVENTION_K_VALUES, RANDOM_TRIALS, NOISE_LEVELS, NOISE_BUDGETS,
 )
-from cbm_v2.dataset import CUBDataset, get_transforms, select_50_classes
-from cbm_v2.models.concept_predictor import ConceptPredictor
-from cbm_v2.models.label_predictor import LabelPredictor
+from cbm.dataset import CUBDataset, get_transforms, select_50_classes
+from cbm.models.concept_predictor import ConceptPredictor
+from cbm.models.label_predictor import LabelPredictor
 
 
 # ---------------------------------------------------------------------------
@@ -189,6 +189,7 @@ def experiment1_error_attribution(c_hat, c_gt, y, yhat_cbm, yhat_oracle, W):
     wrong_concept_mask = c_hat_binary != c_gt  # [N, n_concepts]
 
     # For each concept-attributable error, compute importance of wrong concepts
+    # Impact = W[y_true, ci] * (c_hat[ci] - c_gt[ci]): negative means harmful
     concept_importance = torch.zeros(n_concepts)
     concept_error_count = torch.zeros(n_concepts)
 
@@ -198,9 +199,13 @@ def experiment1_error_attribution(c_hat, c_gt, y, yhat_cbm, yhat_oracle, W):
         true_class = y[i].item()
         wrong_cpts = wrong_concept_mask[i].nonzero(as_tuple=True)[0]
         for ci in wrong_cpts:
-            weight = W[true_class, ci.item()].abs().item()
-            concept_importance[ci.item()] += weight
-            concept_error_count[ci.item()] += 1
+            ci_val = ci.item()
+            impact = W[true_class, ci_val].item() * (
+                c_hat_binary[i, ci_val].item() - c_gt[i, ci_val].item()
+            )
+            if impact < 0:
+                concept_importance[ci_val] += abs(impact)
+            concept_error_count[ci_val] += 1
 
     # Normalize
     total_importance = concept_importance.sum()
@@ -359,39 +364,34 @@ def _extend_greedy_order(current_order, c_h, c_g, true_y, target_k,
                          label_model, n_concepts):
     """Extend greedy oracle ordering up to target_k concepts.
 
-    At each step, try correcting each uncorrected concept, pick the one
+    At each step, batch-evaluate all remaining candidates and pick the one
     that maximally increases P(y_true).
     """
     corrected = set(current_order)
 
     with torch.no_grad():
         while len(corrected) < target_k:
-            # Current intervened concepts
             c_int = c_h.clone()
             for ci in corrected:
                 c_int[ci] = c_g[ci]
 
-            # Current probability of true class
             logits_curr = label_model(c_int.unsqueeze(0).to(DEVICE))
             prob_true_curr = F.softmax(logits_curr, dim=1)[0, true_y].item()
 
-            best_gain = -float("inf")
-            best_ci = -1
+            # Batch-evaluate all remaining candidates in one forward pass
+            remaining = [ci for ci in range(n_concepts) if ci not in corrected]
+            n_rem = len(remaining)
+            if n_rem == 0:
+                break
+            batch = c_int.unsqueeze(0).repeat(n_rem, 1)
+            rem_idx = torch.tensor(remaining, dtype=torch.long)
+            batch[range(n_rem), rem_idx] = c_g[rem_idx]
+            logits_batch = label_model(batch.to(DEVICE))
+            probs_batch = F.softmax(logits_batch, dim=1)[:, true_y]
+            gains = probs_batch - prob_true_curr
 
-            for ci in range(n_concepts):
-                if ci in corrected:
-                    continue
-                # Try correcting concept ci
-                c_trial = c_int.clone()
-                c_trial[ci] = c_g[ci]
-                logits_trial = label_model(c_trial.unsqueeze(0).to(DEVICE))
-                prob_true_trial = F.softmax(logits_trial, dim=1)[0, true_y].item()
-
-                gain = prob_true_trial - prob_true_curr
-                if gain > best_gain:
-                    best_gain = gain
-                    best_ci = ci
-
+            best_local = gains.argmax().item()
+            best_ci = remaining[best_local]
             corrected.add(best_ci)
             current_order.append(best_ci)
 
@@ -424,7 +424,6 @@ def experiment3_minimal(c_hat, c_gt, y, yhat_cbm, label_model):
 
         with torch.no_grad():
             for step in range(n_concepts):
-                # Current state
                 c_int = c_h.clone()
                 for ci in corrected:
                     c_int[ci] = c_g[ci]
@@ -438,28 +437,23 @@ def experiment3_minimal(c_hat, c_gt, y, yhat_cbm, label_model):
                     found = True
                     break
 
-                # Greedy: pick concept that maximally increases P(y_true)
+                # Batch-evaluate all remaining candidates
                 prob_true_curr = F.softmax(logits_curr, dim=1)[0, true_y].item()
-                best_gain = -float("inf")
-                best_ci = -1
+                remaining = [ci for ci in range(n_concepts) if ci not in corrected]
+                n_rem = len(remaining)
+                if n_rem == 0:
+                    break
+                batch = c_int.unsqueeze(0).repeat(n_rem, 1)
+                rem_idx = torch.tensor(remaining, dtype=torch.long)
+                batch[range(n_rem), rem_idx] = c_g[rem_idx]
+                logits_batch = label_model(batch.to(DEVICE))
+                probs_batch = F.softmax(logits_batch, dim=1)[:, true_y]
+                gains = probs_batch - prob_true_curr
 
-                for ci in range(n_concepts):
-                    if ci in corrected:
-                        continue
-                    c_trial = c_int.clone()
-                    c_trial[ci] = c_g[ci]
-                    logits_trial = label_model(c_trial.unsqueeze(0).to(DEVICE))
-                    prob_true_trial = F.softmax(logits_trial, dim=1)[0, true_y].item()
-
-                    gain = prob_true_trial - prob_true_curr
-                    if gain > best_gain:
-                        best_gain = gain
-                        best_ci = ci
-
-                corrected.add(best_ci)
+                best_local = gains.argmax().item()
+                corrected.add(remaining[best_local])
 
             if not found:
-                # Could not correct even with all concepts
                 min_concepts_needed.append(n_concepts)
                 per_sample[sample_idx] = (n_concepts, list(corrected))
 
@@ -484,7 +478,7 @@ def experiment3_minimal(c_hat, c_gt, y, yhat_cbm, label_model):
 # ---------------------------------------------------------------------------
 # Experiment 4: Noisy Experts
 # ---------------------------------------------------------------------------
-def experiment4_noisy(c_hat, c_gt, y, W, label_model):
+def experiment4_noisy(c_hat, c_gt, y, W, label_model, exp2_results=None):
     """Test noisy experts and budget constraints.
 
     Method A: For each noise level, use budget=10 with Random/Uncertainty/Importance.
@@ -563,41 +557,48 @@ def experiment4_noisy(c_hat, c_gt, y, W, label_model):
             row += f"  {summary_a[s][nl]:>15.2f}%"
         print(row)
 
-    # --- Method B: Budget x Strategy ---
-    print(f"\n[Exp4-B] Budget x Strategy (no noise, {NOISE_BUDGETS} budgets)")
+    # --- Method B: Budget x Strategy (reuse experiment 2 results) ---
+    print(f"\n[Exp4-B] Budget x Strategy (extracted from experiment 2)")
     results_b = {s: {b: [] for b in NOISE_BUDGETS} for s in strategies_b}
 
-    for sample_idx in tqdm(range(n_samples), desc="Exp4-B"):
-        c_h = c_hat[sample_idx]
-        c_g = c_gt[sample_idx]
-        true_y = y[sample_idx].item()
-
-        unc_order = uncertainty_scores[sample_idx].argsort().tolist()
-        imp_order = importance_weights[sample_idx].argsort(descending=True).tolist()
-
-        for budget in NOISE_BUDGETS:
-            for strategy in strategies_b:
-                if strategy == "random":
-                    trial_accs = []
-                    for _ in range(RANDOM_TRIALS):
-                        indices = random.sample(range(n_concepts), min(budget, n_concepts))
-                        _, pred = predict_with_intervention(c_h, c_g, indices, label_model)
-                        trial_accs.append(1.0 if pred == true_y else 0.0)
-                    results_b[strategy][budget].append(np.mean(trial_accs))
+    # Extract from experiment 2's per-sample raw results for matching k values
+    if exp2_results is not None:
+        raw_exp2 = exp2_results["raw"]
+        for s in strategies_b:
+            for b in NOISE_BUDGETS:
+                if b in raw_exp2[s]:
+                    results_b[s][b] = raw_exp2[s][b]
                 else:
-                    order = unc_order if strategy == "uncertainty" else imp_order
-                    indices = order[:budget]
-                    _, pred = predict_with_intervention(c_h, c_g, indices, label_model)
-                    results_b[strategy][budget].append(1.0 if pred == true_y else 0.0)
+                    # k value not in exp2, compute fresh
+                    for sample_idx in range(n_samples):
+                        c_h = c_hat[sample_idx]
+                        c_g = c_gt[sample_idx]
+                        true_y = y[sample_idx].item()
+                        unc_order = uncertainty_scores[sample_idx].argsort().tolist()
+                        imp_order = importance_weights[sample_idx].argsort(descending=True).tolist()
+                        if s == "random":
+                            trial_accs = []
+                            for _ in range(RANDOM_TRIALS):
+                                indices = random.sample(range(n_concepts), min(b, n_concepts))
+                                _, pred = predict_with_intervention(c_h, c_g, indices, label_model)
+                                trial_accs.append(1.0 if pred == true_y else 0.0)
+                            results_b[s][b].append(np.mean(trial_accs))
+                        else:
+                            order = unc_order if s == "uncertainty" else imp_order
+                            indices = order[:b]
+                            _, pred = predict_with_intervention(c_h, c_g, indices, label_model)
+                            results_b[s][b].append(1.0 if pred == true_y else 0.0)
+                    results_b[s][b] = np.array(results_b[s][b])
 
     # Aggregate B
     summary_b = {}
     for s in strategies_b:
         summary_b[s] = {}
         for b in NOISE_BUDGETS:
-            acc = np.mean(results_b[s][b]) * 100
+            arr = np.asarray(results_b[s][b])
+            acc = arr.mean() * 100
             summary_b[s][b] = acc
-            results_b[s][b] = np.array(results_b[s][b])
+            results_b[s][b] = arr
 
     print(f"\n[Exp4-B] Accuracy by budget x strategy:")
     header = f"{'budget':>8s}"
@@ -617,18 +618,17 @@ def experiment4_noisy(c_hat, c_gt, y, W, label_model):
 
 
 def _noisy_intervention(c_h, c_g, indices, true_y, noise_level, label_model):
-    """Apply noisy intervention: with probability=noise_level, flip correction.
+    """Apply noisy intervention: with probability=noise_level, give random value.
 
-    When a correction is "flipped", instead of replacing c_hat[i] with c_gt[i],
-    we replace it with 1 - c_gt[i] (wrong value).
+    Noisy expert: correct with prob (1-noise_level), random guess otherwise.
     """
     c_int = c_h.clone()
     with torch.no_grad():
         for ci in indices:
             if random.random() < noise_level:
-                c_int[ci] = 1.0 - c_g[ci]  # noisy flip
+                c_int[ci] = random.choice([0.0, 1.0])  # random noise
             else:
-                c_int[ci] = c_g[ci]         # correct
+                c_int[ci] = c_g[ci]                     # correct
         logits = label_model(c_int.unsqueeze(0).to(DEVICE))
         pred = logits.argmax(dim=1).item()
     return 1.0 if pred == true_y else 0.0
@@ -668,7 +668,7 @@ def main():
     exp1 = experiment1_error_attribution(c_hat, c_gt, y, yhat_cbm, yhat_oracle, W)
     exp2 = experiment2_strategies(c_hat, c_gt, y, W, label_model)
     exp3 = experiment3_minimal(c_hat, c_gt, y, yhat_cbm, label_model)
-    exp4 = experiment4_noisy(c_hat, c_gt, y, W, label_model)
+    exp4 = experiment4_noisy(c_hat, c_gt, y, W, label_model, exp2_results=exp2)
 
     # 5. Save all results
     all_results = {

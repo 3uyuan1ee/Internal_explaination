@@ -1,38 +1,31 @@
 #!/bin/bash
-# Run the full CBM experiment pipeline on GPU server
+# CBM Intervention Experiment Pipeline
+# Usage: bash run_all.sh
+
 set -e
 
-echo "=== Checking GPU ==="
-python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}, Device: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"CPU\"}')"
-
-echo ""
-echo "=== Stage 1: Training Baseline ==="
-python scripts/train_baseline.py
-
-echo ""
-echo "=== Stage 2: Training Concept Predictor ==="
+echo "=========================================="
+echo "Stage 1: Train Concept Predictor (X -> C)"
+echo "=========================================="
 python scripts/train_concept.py
 
 echo ""
-echo "=== Stage 3: Training Label Predictor ==="
+echo "=========================================="
+echo "Stage 2: Train Label Predictor (C -> Y)"
+echo "=========================================="
 python scripts/train_label.py
 
 echo ""
-echo "=== Stage 4: Evaluation ==="
-python scripts/evaluate.py
+echo "=========================================="
+echo "Stage 3: Run Intervention Experiments 1-4"
+echo "=========================================="
+python scripts/run_interventions.py
 
 echo ""
-echo "=== Stage 5: Explanation Generation ==="
-python scripts/explain.py --num_images 8
+echo "=========================================="
+echo "Stage 4: Generate Visualization Figures"
+echo "=========================================="
+python scripts/visualize.py
 
 echo ""
-echo "=== Stage 6: Analysis & Visualization ==="
-python scripts/analyze.py
-
-echo ""
-echo "=== Stage 7: Adversarial Robustness Analysis ==="
-python scripts/adversarial.py --num_examples 6 --epsilon 0.05
-
-echo ""
-echo "=== All experiments completed! ==="
-ls -la outputs/figures/
+echo "All done! Check outputs/ for results."

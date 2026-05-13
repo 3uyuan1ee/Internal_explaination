@@ -1,37 +1,36 @@
 """
-Concept predictor: ResNet-18 encoder → concept bottleneck (sigmoid outputs).
+Concept predictor: InceptionV3 (partial freeze) -> concept logits.
 
-Maps input images to a vector of concept probabilities, one per attribute.
-Trained with binary cross-entropy using CUB attribute annotations.
+Outputs concept logits (pre-sigmoid) for BCEWithLogitsLoss.
 """
-
 import torch
 import torch.nn as nn
 from torchvision import models
 
 
 class ConceptPredictor(nn.Module):
-    """Image → concept probabilities."""
-
     def __init__(self, num_concepts: int):
         super().__init__()
-        resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-        # Remove the final FC layer, keep everything up to avgpool
-        self.encoder = nn.Sequential(*list(resnet.children())[:-1])
-        # Freeze pretrained backbone (official CBM pattern)
-        for param in self.encoder.parameters():
-            param.requires_grad = False
-        self.flatten = nn.Flatten()
-        # Concept prediction head (only trainable part)
-        self.concept_head = nn.Sequential(
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(256, num_concepts),
+        self.backbone = models.inception_v3(
+            weights=models.Inception_V3_Weights.DEFAULT,
+            aux_logits=False,
         )
+        self.backbone.fc = nn.Identity()
+
+        # Freeze layers up to and including Mixed_6e
+        freeze_until = "Mixed_6e"
+        freezing = True
+        for name, child in self.backbone.named_children():
+            if freezing:
+                for param in child.parameters():
+                    param.requires_grad = False
+            if name == freeze_until:
+                freezing = False
+
+        self.concept_head = nn.Linear(2048, num_concepts)
 
     def forward(self, x):
-        features = self.flatten(self.encoder(x))  # [B, 512]
-        concept_logits = self.concept_head(features)  # [B, num_concepts]
-        concept_probs = torch.sigmoid(concept_logits)  # [B, num_concepts]
+        features = self.backbone(x)
+        concept_logits = self.concept_head(features)
+        concept_probs = torch.sigmoid(concept_logits)
         return concept_probs, concept_logits
