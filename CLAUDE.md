@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Concept Bottleneck Model (CBM) intervention experiment for the Explainable AI course at BIT. Focuses on expert-in-the-loop concept intervention — quantifying how efficiently CBM intervention corrects errors on CUB-200-2011 bird dataset (50 selected species, InceptionV3 backbone).
+Concept Bottleneck Model (CBM) intervention experiment for the Explainable AI course at BIT. Focuses on expert-in-the-loop concept intervention — quantifying how efficiently CBM intervention corrects errors on CUB-200-2011 bird dataset (20 selected species, InceptionV3 backbone).
 
 ## Commands
 
@@ -71,7 +71,7 @@ Image → [ConceptPredictor] → concept probs (sigmoid) → [LabelPredictor] �
 
 ## Key Design Decisions
 
-- **50 of 200 classes**: Selected with fixed seed=42 in `cbm/dataset.py` `select_50_classes()`
+- **20 of 200 classes**: Selected with fixed seed=42 in `cbm/dataset.py` `select_50_classes()`
 - **Attribute filtering**: 312 raw attributes filtered by variance (`MIN_ATTRIBUTE_VARIANCE=0.05`), using training set only to avoid data leakage
 - **Confidence threshold**: Only CUB attribute annotations with certainty >= 3 are used
 - **Sequential training**: Stage 1 trains X→C, Stage 2 trains C→Y (using GT concepts, standard CBM approach)

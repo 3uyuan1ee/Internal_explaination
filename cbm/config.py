@@ -26,7 +26,7 @@ ATTRIBUTES_FILE = DATA_DIR / "attributes" / "image_attribute_labels.txt"
 
 # ── 50 Class Selection ────────────────────────────────────────────────
 SEED = 42
-NUM_CLASSES = 50
+NUM_CLASSES = 20
 SELECTED_CLASSES = None  # {original_1indexed_id: local_0indexed_id}
 
 # ── Attribute Filtering ───────────────────────────────────────────────
