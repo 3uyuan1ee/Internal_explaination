@@ -1,4 +1,4 @@
-"""Train LabelPredictor (C_hat -> Y) using predicted concepts."""
+"""Train LabelPredictor (C -> Y) using ground-truth concepts."""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -12,11 +12,9 @@ from tqdm import tqdm
 from cbm.config import (
     DEVICE, LABEL_LR, LABEL_WEIGHT_DECAY, LABEL_EPOCHS,
     LABEL_BATCH_SIZE, LABEL_SCHEDULER_STEP, LABEL_SCHEDULER_GAMMA,
-    LABEL_L1_LAMBDA, CHECKPOINT_DIR, USE_AMP, EARLY_STOP_PATIENCE,
-    TORCH_LOAD_KWARGS,
+    LABEL_L1_LAMBDA, CHECKPOINT_DIR, EARLY_STOP_PATIENCE,
 )
 from cbm.dataset import get_dataloaders
-from cbm.models.concept_predictor import ConceptPredictor
 from cbm.models.label_predictor import LabelPredictor
 from cbm.utils import AverageMeter, set_seed
 
@@ -28,26 +26,18 @@ def main():
     num_concepts = dataset.num_concepts
     num_classes = dataset.num_classes
 
-    ckpt = torch.load(CHECKPOINT_DIR / "concept_predictor_best.pth",
-                       map_location=DEVICE, **TORCH_LOAD_KWARGS)
-    concept_model = ConceptPredictor(num_concepts).to(DEVICE)
-    concept_model.load_state_dict(ckpt["model_state_dict"])
-    concept_model.eval()
-    print(f"Concept predictor loaded (acc={ckpt['concept_acc']:.2f}%)")
-
-    @torch.no_grad()
-    def get_concepts(loader):
+    def get_gt_concepts(loader):
+        """Load ground-truth concepts directly from dataset annotations."""
         all_concepts, all_labels = [], []
-        for images, _, labels, _ in tqdm(loader, desc="Extracting concepts"):
-            probs, _ = concept_model(images.to(DEVICE))
-            all_concepts.append(probs.cpu())
+        for _, concepts, labels, _ in loader:
+            all_concepts.append(concepts)
             all_labels.append(labels)
         return torch.cat(all_concepts), torch.cat(all_labels)
 
-    print("Extracting training concepts...")
-    train_concepts, train_labels = get_concepts(train_loader)
-    print("Extracting test concepts...")
-    test_concepts, test_labels = get_concepts(test_loader)
+    print("Loading ground-truth training concepts...")
+    train_concepts, train_labels = get_gt_concepts(train_loader)
+    print("Loading ground-truth test concepts...")
+    test_concepts, test_labels = get_gt_concepts(test_loader)
 
     label_model = LabelPredictor(num_concepts, num_classes).to(DEVICE)
     criterion = nn.CrossEntropyLoss()

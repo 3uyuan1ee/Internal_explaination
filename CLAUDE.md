@@ -74,7 +74,7 @@ Image → [ConceptPredictor] → concept probs (sigmoid) → [LabelPredictor] �
 - **50 of 200 classes**: Selected with fixed seed=42 in `cbm/dataset.py` `select_50_classes()`
 - **Attribute filtering**: 312 raw attributes filtered by variance (`MIN_ATTRIBUTE_VARIANCE=0.05`), using training set only to avoid data leakage
 - **Confidence threshold**: Only CUB attribute annotations with certainty >= 3 are used
-- **Sequential training**: Stage 1 trains X→C, Stage 2 trains Ĉ→Y (using predicted concepts, not GT)
+- **Sequential training**: Stage 1 trains X→C, Stage 2 trains C→Y (using GT concepts, standard CBM approach)
 - **Reproducibility**: All stages set `seed=42` via `cbm.utils.set_seed()`
 - **Noise models**: Random noise (random {0,1}) and adversarial flip (1-GT) for robustness testing
 - **GPU auto-detection**: `cbm/config.py` enables AMP and cuDNN benchmark when CUDA is available
