@@ -13,9 +13,9 @@ class ConceptPredictor(nn.Module):
         super().__init__()
         self.backbone = models.inception_v3(
             weights=models.Inception_V3_Weights.DEFAULT,
-            aux_logits=False,
         )
         self.backbone.fc = nn.Identity()
+        self.backbone.AuxLogits = None
 
         # Freeze layers up to and including Mixed_6e
         freeze_until = "Mixed_6e"
@@ -30,7 +30,9 @@ class ConceptPredictor(nn.Module):
         self.concept_head = nn.Linear(2048, num_concepts)
 
     def forward(self, x):
-        features = self.backbone(x)
+        output = self.backbone(x)
+        # During training with aux_logits, output is InceptionOutputs namedtuple
+        features = output.logits if hasattr(output, 'logits') else output
         concept_logits = self.concept_head(features)
         concept_probs = torch.sigmoid(concept_logits)
         return concept_probs, concept_logits
