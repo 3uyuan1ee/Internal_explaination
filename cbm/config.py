@@ -63,6 +63,7 @@ INTERVENTION_K_VALUES = [0, 1, 2, 3, 5, 8, 10, 15, 20, 30, 50, -1]
 RANDOM_TRIALS = 10
 NOISE_LEVELS = [0.0, 0.05, 0.1, 0.2, 0.3, 0.5]
 NOISE_BUDGETS = [5, 10, 20]
+NOISE_TYPES = ["random", "adversarial"]
 
 # ── Device ────────────────────────────────────────────────────────────
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -3,9 +3,9 @@ Intervention experiments 1-4 for Concept Bottleneck Model.
 
 Experiments:
   1. Error attribution — decompose errors into concept vs label predictor
-  2. Strategy comparison — 5 intervention strategies across k values
+  2. Strategy comparison — 6 intervention strategies across k values
   3. Minimal intervention — greedy search for minimum concepts to correct
-  4. Noisy experts — robustness to noise and budget constraints
+  4. Noisy experts — robustness to noise types and budget constraints
 
 Usage:
     python scripts/run_interventions.py
@@ -25,10 +25,12 @@ from tqdm import tqdm
 from cbm.config import (
     DEVICE, CHECKPOINT_DIR, RESULTS_DIR, TORCH_LOAD_KWARGS,
     INTERVENTION_K_VALUES, RANDOM_TRIALS, NOISE_LEVELS, NOISE_BUDGETS,
+    NOISE_TYPES,
 )
 from cbm.dataset import CUBDataset, get_transforms, select_50_classes
 from cbm.models.concept_predictor import ConceptPredictor
 from cbm.models.label_predictor import LabelPredictor
+from cbm.utils import set_seed
 
 
 # ---------------------------------------------------------------------------
@@ -237,19 +239,23 @@ def experiment1_error_attribution(c_hat, c_gt, y, yhat_cbm, yhat_oracle, W):
 # Experiment 2: Strategy Comparison
 # ---------------------------------------------------------------------------
 def experiment2_strategies(c_hat, c_gt, y, W, label_model):
-    """Compare 5 intervention strategies across k values.
+    """Compare 6 intervention strategies across k values.
 
     Strategies:
       1. Random: random.choice k concepts, averaged over RANDOM_TRIALS
       2. Uncertainty: top-k concepts with smallest |p - 0.5|
       3. Importance-Weighted: top-k concepts by |W[predicted_class, i] * p[i]|
       4. Greedy Oracle: iterative greedy correction maximizing P(y_true)
-      5. Error-Targeted: correct only wrong concepts, ranked by |W[true_class, i]|
+      5. Oracle-Targeted: correct only wrong concepts, ranked by |W[true_class, i]|
+         (oracle: uses GT error detection + true class label)
+      6. Error-Targeted: correct only wrong concepts, ranked by |W[predicted_class, i]|
+         (practical: uses GT error detection + predicted class label)
     """
     n_samples, n_concepts = c_hat.shape
     n_classes = W.shape[0]
 
-    strategies = ["random", "uncertainty", "importance", "greedy_oracle", "error_targeted"]
+    strategies = ["random", "uncertainty", "importance", "greedy_oracle",
+                  "oracle_targeted", "error_targeted"]
     k_values = INTERVENTION_K_VALUES
     results = {s: {k: [] for k in k_values} for s in strategies}
 
@@ -266,7 +272,7 @@ def experiment2_strategies(c_hat, c_gt, y, W, label_model):
         pc = yhat[i].item()
         importance_weights[i] = W[pc].abs() * c_hat[i]
 
-    # Error mask and error-targeted ranking
+    # Error mask
     c_hat_binary = c_hat.round()
     wrong_concept_mask = c_hat_binary != c_gt  # [N, n_concepts]
 
@@ -284,10 +290,18 @@ def experiment2_strategies(c_hat, c_gt, y, W, label_model):
         # Importance: descending |W * p|
         imp_order = importance_weights[sample_idx].argsort(descending=True)
 
-        # Error-targeted: wrong concepts ranked by |W[true_class, i]| descending
+        # Oracle-Targeted: wrong concepts ranked by |W[true_class, i]| descending
         wrong_cpts = wrong_concept_mask[sample_idx].nonzero(as_tuple=True)[0].tolist()
-        err_weights = W[true_y].abs()
-        err_order = sorted(wrong_cpts, key=lambda ci: err_weights[ci].item(), reverse=True)
+        oracle_err_weights = W[true_y].abs()
+        oracle_err_order = sorted(wrong_cpts,
+                                  key=lambda ci: oracle_err_weights[ci].item(),
+                                  reverse=True)
+
+        # Error-Targeted (practical): wrong concepts ranked by |W[predicted_class, i]| descending
+        practical_err_weights = W[yhat[sample_idx].item()].abs()
+        practical_err_order = sorted(wrong_cpts,
+                                     key=lambda ci: practical_err_weights[ci].item(),
+                                     reverse=True)
 
         # Greedy oracle: will be built iteratively
         greedy_order = []
@@ -327,12 +341,21 @@ def experiment2_strategies(c_hat, c_gt, y, W, label_model):
             _, pred = predict_with_intervention(c_h, c_g, greedy_indices, label_model)
             results["greedy_oracle"][k].append(1.0 if pred == true_y else 0.0)
 
-            # --- Error-Targeted ---
-            if len(err_order) == 0:
-                # No wrong concepts — prediction is already correct or label error
-                results["error_targeted"][k].append(1.0 if yhat[sample_idx].item() == true_y else 0.0)
+            # --- Oracle-Targeted (uses true_y for ranking) ---
+            if len(oracle_err_order) == 0:
+                results["oracle_targeted"][k].append(
+                    1.0 if yhat[sample_idx].item() == true_y else 0.0)
             else:
-                err_indices = err_order[:effective_k]
+                err_indices = oracle_err_order[:effective_k]
+                _, pred = predict_with_intervention(c_h, c_g, err_indices, label_model)
+                results["oracle_targeted"][k].append(1.0 if pred == true_y else 0.0)
+
+            # --- Error-Targeted (practical: uses predicted class for ranking) ---
+            if len(practical_err_order) == 0:
+                results["error_targeted"][k].append(
+                    1.0 if yhat[sample_idx].item() == true_y else 0.0)
+            else:
+                err_indices = practical_err_order[:effective_k]
                 _, pred = predict_with_intervention(c_h, c_g, err_indices, label_model)
                 results["error_targeted"][k].append(1.0 if pred == true_y else 0.0)
 
@@ -479,12 +502,14 @@ def experiment3_minimal(c_hat, c_gt, y, yhat_cbm, label_model):
 # Experiment 4: Noisy Experts
 # ---------------------------------------------------------------------------
 def experiment4_noisy(c_hat, c_gt, y, W, label_model, exp2_results=None):
-    """Test noisy experts and budget constraints.
+    """Test noisy experts with two noise models and budget constraints.
 
-    Method A: For each noise level, use budget=10 with Random/Uncertainty/Importance.
-              With probability=noise_level, the correction is flipped (wrong instead of GT).
-    Method B: For budgets [5,10,20] and strategies [Random,Uncertainty,Importance],
-              correct top-k concepts perfectly (no noise).
+    Method A: For each noise level × noise type, use budget=10 with
+              Random/Uncertainty/Importance.
+              - Random noise: with prob=noise_level, give random {0,1} value.
+              - Adversarial noise: with prob=noise_level, flip to opposite value.
+    Method B: Noise level × budget grid for Uncertainty strategy.
+              Tests interaction between noise and expert effort.
     """
     n_samples, n_concepts = c_hat.shape
     n_classes = W.shape[0]
@@ -500,116 +525,115 @@ def experiment4_noisy(c_hat, c_gt, y, W, label_model, exp2_results=None):
         importance_weights[i] = W[pc].abs() * c_hat[i]
 
     strategies_a = ["random", "uncertainty", "importance"]
-    strategies_b = ["random", "uncertainty", "importance"]
 
-    # --- Method A: Noise levels ---
-    print(f"\n[Exp4-A] Noise robustness (budget=10, {len(NOISE_LEVELS)} noise levels)")
-    results_a = {s: {nl: [] for nl in NOISE_LEVELS} for s in strategies_a}
+    # --- Method A: Noise levels × noise types ---
+    print(f"\n[Exp4-A] Noise robustness (budget=10, {len(NOISE_LEVELS)} noise levels, "
+          f"{len(NOISE_TYPES)} noise types)")
+    results_a = {nt: {s: {nl: [] for nl in NOISE_LEVELS}
+                      for s in strategies_a}
+                 for nt in NOISE_TYPES}
 
-    for sample_idx in tqdm(range(n_samples), desc="Exp4-A"):
-        c_h = c_hat[sample_idx]
-        c_g = c_gt[sample_idx]
-        true_y = y[sample_idx].item()
+    for noise_type in NOISE_TYPES:
+        for sample_idx in tqdm(range(n_samples),
+                               desc=f"Exp4-A ({noise_type})"):
+            c_h = c_hat[sample_idx]
+            c_g = c_gt[sample_idx]
+            true_y = y[sample_idx].item()
 
-        # Pre-compute per-sample strategy orderings
-        unc_order = uncertainty_scores[sample_idx].argsort().tolist()
-        imp_order = importance_weights[sample_idx].argsort(descending=True).tolist()
+            unc_order = uncertainty_scores[sample_idx].argsort().tolist()
+            imp_order = importance_weights[sample_idx].argsort(descending=True).tolist()
 
-        for noise_level in NOISE_LEVELS:
-            budget = 10
+            for noise_level in NOISE_LEVELS:
+                budget = 10
 
-            for strategy in strategies_a:
-                if strategy == "random":
-                    # Average over RANDOM_TRIALS for random strategy
-                    trial_accs = []
-                    for _ in range(RANDOM_TRIALS):
-                        indices = random.sample(range(n_concepts), min(budget, n_concepts))
+                for strategy in strategies_a:
+                    if strategy == "random":
+                        trial_accs = []
+                        for _ in range(RANDOM_TRIALS):
+                            indices = random.sample(range(n_concepts),
+                                                    min(budget, n_concepts))
+                            acc = _noisy_intervention(
+                                c_h, c_g, indices, true_y, noise_level,
+                                label_model, noise_type=noise_type,
+                            )
+                            trial_accs.append(acc)
+                        results_a[noise_type][strategy][noise_level].append(
+                            np.mean(trial_accs))
+                    else:
+                        order = unc_order if strategy == "uncertainty" else imp_order
+                        indices = order[:budget]
                         acc = _noisy_intervention(
-                            c_h, c_g, indices, true_y, noise_level, label_model,
+                            c_h, c_g, indices, true_y, noise_level,
+                            label_model, noise_type=noise_type,
                         )
-                        trial_accs.append(acc)
-                    results_a[strategy][noise_level].append(np.mean(trial_accs))
-                else:
-                    order = unc_order if strategy == "uncertainty" else imp_order
-                    indices = order[:budget]
-                    acc = _noisy_intervention(
-                        c_h, c_g, indices, true_y, noise_level, label_model,
-                    )
-                    results_a[strategy][noise_level].append(acc)
+                        results_a[noise_type][strategy][noise_level].append(acc)
 
     # Aggregate A
     summary_a = {}
-    for s in strategies_a:
-        summary_a[s] = {}
-        for nl in NOISE_LEVELS:
-            acc = np.mean(results_a[s][nl]) * 100
-            summary_a[s][nl] = acc
-            results_a[s][nl] = np.array(results_a[s][nl])
-
-    print(f"\n[Exp4-A] Accuracy by noise level (budget=10):")
-    header = f"{'noise':>8s}"
-    for s in strategies_a:
-        header += f"  {s:>16s}"
-    print(header)
-    for nl in NOISE_LEVELS:
-        row = f"{nl:>8.2f}"
+    for nt in NOISE_TYPES:
+        summary_a[nt] = {}
         for s in strategies_a:
-            row += f"  {summary_a[s][nl]:>15.2f}%"
-        print(row)
+            summary_a[nt][s] = {}
+            for nl in NOISE_LEVELS:
+                acc = np.mean(results_a[nt][s][nl]) * 100
+                summary_a[nt][s][nl] = acc
+                results_a[nt][s][nl] = np.array(results_a[nt][s][nl])
 
-    # --- Method B: Budget x Strategy (reuse experiment 2 results) ---
-    print(f"\n[Exp4-B] Budget x Strategy (extracted from experiment 2)")
-    results_b = {s: {b: [] for b in NOISE_BUDGETS} for s in strategies_b}
+        print(f"\n[Exp4-A] {nt} noise — Accuracy by noise level (budget=10):")
+        header = f"{'noise':>8s}"
+        for s in strategies_a:
+            header += f"  {s:>16s}"
+        print(header)
+        for nl in NOISE_LEVELS:
+            row = f"{nl:>8.2f}"
+            for s in strategies_a:
+                row += f"  {summary_a[nt][s][nl]:>15.2f}%"
+            print(row)
 
-    # Extract from experiment 2's per-sample raw results for matching k values
-    if exp2_results is not None:
-        raw_exp2 = exp2_results["raw"]
-        for s in strategies_b:
-            for b in NOISE_BUDGETS:
-                if b in raw_exp2[s]:
-                    results_b[s][b] = raw_exp2[s][b]
-                else:
-                    # k value not in exp2, compute fresh
-                    for sample_idx in range(n_samples):
-                        c_h = c_hat[sample_idx]
-                        c_g = c_gt[sample_idx]
-                        true_y = y[sample_idx].item()
-                        unc_order = uncertainty_scores[sample_idx].argsort().tolist()
-                        imp_order = importance_weights[sample_idx].argsort(descending=True).tolist()
-                        if s == "random":
-                            trial_accs = []
-                            for _ in range(RANDOM_TRIALS):
-                                indices = random.sample(range(n_concepts), min(b, n_concepts))
-                                _, pred = predict_with_intervention(c_h, c_g, indices, label_model)
-                                trial_accs.append(1.0 if pred == true_y else 0.0)
-                            results_b[s][b].append(np.mean(trial_accs))
-                        else:
-                            order = unc_order if s == "uncertainty" else imp_order
-                            indices = order[:b]
-                            _, pred = predict_with_intervention(c_h, c_g, indices, label_model)
-                            results_b[s][b].append(1.0 if pred == true_y else 0.0)
-                    results_b[s][b] = np.array(results_b[s][b])
+    # --- Method B: Noise × Budget grid (Uncertainty strategy) ---
+    print(f"\n[Exp4-B] Noise × Budget grid (Uncertainty strategy)")
+    results_b = {nt: {nl: {b: [] for b in NOISE_BUDGETS}
+                      for nl in NOISE_LEVELS}
+                 for nt in NOISE_TYPES}
+
+    for noise_type in NOISE_TYPES:
+        for sample_idx in tqdm(range(n_samples),
+                               desc=f"Exp4-B ({noise_type})"):
+            c_h = c_hat[sample_idx]
+            c_g = c_gt[sample_idx]
+            true_y = y[sample_idx].item()
+            unc_order = uncertainty_scores[sample_idx].argsort().tolist()
+
+            for noise_level in NOISE_LEVELS:
+                for budget in NOISE_BUDGETS:
+                    indices = unc_order[:budget]
+                    acc = _noisy_intervention(
+                        c_h, c_g, indices, true_y, noise_level,
+                        label_model, noise_type=noise_type,
+                    )
+                    results_b[noise_type][noise_level][budget].append(acc)
 
     # Aggregate B
     summary_b = {}
-    for s in strategies_b:
-        summary_b[s] = {}
-        for b in NOISE_BUDGETS:
-            arr = np.asarray(results_b[s][b])
-            acc = arr.mean() * 100
-            summary_b[s][b] = acc
-            results_b[s][b] = arr
+    for nt in NOISE_TYPES:
+        summary_b[nt] = {}
+        for nl in NOISE_LEVELS:
+            summary_b[nt][nl] = {}
+            for b in NOISE_BUDGETS:
+                acc = np.mean(results_b[nt][nl][b]) * 100
+                summary_b[nt][nl][b] = acc
+                results_b[nt][nl][b] = np.array(results_b[nt][nl][b])
 
-    print(f"\n[Exp4-B] Accuracy by budget x strategy:")
-    header = f"{'budget':>8s}"
-    for s in strategies_b:
-        header += f"  {s:>16s}"
-    print(header)
-    for b in NOISE_BUDGETS:
-        row = f"{b:>8d}"
-        for s in strategies_b:
-            row += f"  {summary_b[s][b]:>15.2f}%"
-        print(row)
+        print(f"\n[Exp4-B] {nt} noise — Accuracy by noise_level × budget:")
+        header = f"{'nl/bud':>8s}"
+        for b in NOISE_BUDGETS:
+            header += f"  k={b:>13d}"
+        print(header)
+        for nl in NOISE_LEVELS:
+            row = f"{nl:>8.2f}"
+            for b in NOISE_BUDGETS:
+                row += f"  {summary_b[nt][nl][b]:>15.2f}%"
+            print(row)
 
     return {
         "noise": {"raw": results_a, "summary": summary_a},
@@ -617,18 +641,24 @@ def experiment4_noisy(c_hat, c_gt, y, W, label_model, exp2_results=None):
     }
 
 
-def _noisy_intervention(c_h, c_g, indices, true_y, noise_level, label_model):
-    """Apply noisy intervention: with probability=noise_level, give random value.
+def _noisy_intervention(c_h, c_g, indices, true_y, noise_level, label_model,
+                         noise_type="random"):
+    """Apply noisy intervention: with prob=noise_level, introduce noise.
 
-    Noisy expert: correct with prob (1-noise_level), random guess otherwise.
+    Args:
+        noise_type: "random" gives random {0,1} value;
+                    "adversarial" flips to the opposite value (1 - GT).
     """
     c_int = c_h.clone()
     with torch.no_grad():
         for ci in indices:
             if random.random() < noise_level:
-                c_int[ci] = random.choice([0.0, 1.0])  # random noise
+                if noise_type == "adversarial":
+                    c_int[ci] = 1.0 - c_g[ci]  # adversarial flip
+                else:
+                    c_int[ci] = random.choice([0.0, 1.0])  # random noise
             else:
-                c_int[ci] = c_g[ci]                     # correct
+                c_int[ci] = c_g[ci]  # correct
         logits = label_model(c_int.unsqueeze(0).to(DEVICE))
         pred = logits.argmax(dim=1).item()
     return 1.0 if pred == true_y else 0.0
@@ -638,6 +668,8 @@ def _noisy_intervention(c_h, c_g, indices, true_y, noise_level, label_model):
 # Main
 # ---------------------------------------------------------------------------
 def main():
+    set_seed(42)
+
     print("=" * 70)
     print("Intervention Experiments 1-4")
     print("=" * 70)

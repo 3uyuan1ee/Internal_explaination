@@ -59,16 +59,24 @@ Image → [ConceptPredictor] → concept probs (sigmoid) → [LabelPredictor] �
 ## Experiments
 
 1. **Error Attribution**: Decompose errors into concept-attributable vs label predictor
-2. **Strategy Comparison**: 5 intervention strategies (Random, Uncertainty, Importance, Greedy Oracle, Error-Targeted) across k values
+2. **Strategy Comparison**: 6 intervention strategies across k values:
+   - Random, Uncertainty, Importance (no oracle info)
+   - Greedy Oracle (full oracle: uses true_y for greedy selection)
+   - Oracle-Targeted (partial oracle: uses GT error detection + true_y for ranking)
+   - Error-Targeted (practical: uses GT error detection + predicted class for ranking)
 3. **Minimal Intervention**: Greedy per-sample search for minimum concepts to correct
-4. **Noisy Experts**: Robustness to noise levels and budget constraints
+4. **Noisy Experts**: Robustness to noise types (random + adversarial) and budget constraints
+   - Method A: Noise level × noise type × strategy (budget=10)
+   - Method B: Noise level × budget grid (Uncertainty strategy)
 
 ## Key Design Decisions
 
 - **50 of 200 classes**: Selected with fixed seed=42 in `cbm/dataset.py` `select_50_classes()`
-- **Attribute filtering**: 312 raw attributes filtered by variance (`MIN_ATTRIBUTE_VARIANCE=0.05`), yielding ~136 concepts
+- **Attribute filtering**: 312 raw attributes filtered by variance (`MIN_ATTRIBUTE_VARIANCE=0.05`), using training set only to avoid data leakage
 - **Confidence threshold**: Only CUB attribute annotations with certainty >= 3 are used
 - **Sequential training**: Stage 1 trains X→C, Stage 2 trains Ĉ→Y (using predicted concepts, not GT)
+- **Reproducibility**: All stages set `seed=42` via `cbm.utils.set_seed()`
+- **Noise models**: Random noise (random {0,1}) and adversarial flip (1-GT) for robustness testing
 - **GPU auto-detection**: `cbm/config.py` enables AMP and cuDNN benchmark when CUDA is available
 - **Checkpoint loading**: Uses `weights_only=False` (PyTorch >= 2.6 compat)
 

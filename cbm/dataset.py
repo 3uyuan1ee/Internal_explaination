@@ -101,8 +101,9 @@ def _load_annotations(selected_classes: dict):
             if certainty >= MIN_CERTAINTY:
                 raw_attributes[img_id][attr_id] = float(is_present)
 
-    # Variance filter
-    attr_matrix = np.stack([raw_attributes[i] for i in sorted(valid_ids)])
+    # Variance filter (only training samples to avoid data leakage)
+    train_ids = sorted(i for i in valid_ids if id_to_split.get(i, -1) == 1)
+    attr_matrix = np.stack([raw_attributes[i] for i in train_ids])
     variances = attr_matrix.var(axis=0)
     valid_attr_indices = np.where(variances > MIN_ATTRIBUTE_VARIANCE)[0]
     filtered_attr_names = [attr_names[i] for i in valid_attr_indices]

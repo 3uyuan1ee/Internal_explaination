@@ -51,6 +51,7 @@ COLORS = {
     "Uncertainty": "#1f77b4",
     "Importance": "#ff7f0e",
     "GreedyOracle": "#d62728",
+    "OracleTargeted": "#e377c2",
     "ErrorTargeted": "#2ca02c",
 }
 
@@ -59,6 +60,7 @@ MARKERS = {
     "Uncertainty": "s",
     "Importance": "^",
     "GreedyOracle": "D",
+    "OracleTargeted": "P",
     "ErrorTargeted": "v",
 }
 
@@ -68,6 +70,7 @@ STRATEGY_MAP = {
     "uncertainty": "Uncertainty",
     "importance": "Importance",
     "greedy_oracle": "GreedyOracle",
+    "oracle_targeted": "OracleTargeted",
     "error_targeted": "ErrorTargeted",
 }
 
@@ -247,7 +250,7 @@ def plot_fig3_auc(data):
     for strat_key, display_name in STRATEGY_MAP.items():
         ks = np.array(k_values, dtype=float)
         accs = np.array([summary[strat_key][k] for k in k_values])
-        auc_val = np.trapz(accs, ks)
+        auc_val = np.trapz(accs, ks) / (ks[-1] - ks[0])
         aucs[display_name] = auc_val
 
     names = list(aucs.keys())
@@ -269,9 +272,9 @@ def plot_fig3_auc(data):
             fontweight="bold",
         )
 
-    ax.set_ylabel("AUC (Accuracy x k)")
+    ax.set_ylabel("Normalized AUC (Mean Accuracy over k)")
     ax.set_title(
-        "Strategy Efficiency: Area Under the Accuracy-k Curve",
+        "Strategy Efficiency: Normalized Area Under the Accuracy-k Curve",
         fontsize=14,
         fontweight="bold",
     )
@@ -344,52 +347,56 @@ def plot_fig4_kmin(data):
 # Fig 5: Noise Degradation Curves
 # ---------------------------------------------------------------------------
 def plot_fig5_noise(data):
-    """Accuracy vs noise level for 3 strategies (budget=10)."""
+    """Accuracy vs noise level for 3 strategies × 2 noise types (budget=10)."""
     exp4 = data["exp4"]
     noise_summary = exp4["noise"]["summary"]
 
-    # Collect noise levels from the data
-    noise_levels = sorted(noise_summary["random"].keys())
+    noise_types = ["random", "adversarial"]
+    noise_levels = sorted(noise_summary["random"]["random"].keys())
 
-    fig, ax = plt.subplots(figsize=(12, 6.75))
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6), sharey=True)
 
-    for strat_key in ["random", "uncertainty", "importance"]:
-        display_name = STRATEGY_MAP[strat_key]
-        nl_arr = np.array(noise_levels)
-        acc_arr = np.array([noise_summary[strat_key][nl] for nl in noise_levels])
-        ax.plot(
-            nl_arr,
-            acc_arr,
-            color=COLORS[display_name],
-            marker=MARKERS[display_name],
-            linewidth=2,
-            markersize=7,
-            label=display_name,
+    for ax_idx, noise_type in enumerate(noise_types):
+        ax = axes[ax_idx]
+        for strat_key in ["random", "uncertainty", "importance"]:
+            display_name = STRATEGY_MAP[strat_key]
+            nl_arr = np.array(noise_levels)
+            acc_arr = np.array(
+                [noise_summary[noise_type][strat_key][nl] for nl in noise_levels])
+            linestyle = "-" if noise_type == "random" else "--"
+            ax.plot(
+                nl_arr,
+                acc_arr,
+                color=COLORS[display_name],
+                marker=MARKERS[display_name],
+                linewidth=2,
+                markersize=7,
+                linestyle=linestyle,
+                label=display_name,
+            )
+
+        # No-intervention baseline
+        y = np.asarray(data["y"])
+        yhat_cbm = np.asarray(data["yhat_cbm"])
+        cbm_baseline = (yhat_cbm == y).mean() * 100
+        ax.axhline(
+            y=cbm_baseline,
+            color="gray",
+            linestyle=":",
+            linewidth=1.5,
+            label=f"No Intervention ({cbm_baseline:.1f}%)",
         )
 
-    # No-intervention baseline (CBM accuracy at k=0, noise=0)
-    y = np.asarray(data["y"])
-    yhat_cbm = np.asarray(data["yhat_cbm"])
-    cbm_baseline = (yhat_cbm == y).mean() * 100
-    ax.axhline(
-        y=cbm_baseline,
-        color="gray",
-        linestyle="--",
-        linewidth=1.5,
-        label=f"No Intervention ({cbm_baseline:.1f}%)",
-    )
+        title = "Random Noise" if noise_type == "random" else "Adversarial Flip"
+        ax.set_title(f"{title} (Budget=10)", fontsize=14, fontweight="bold")
+        ax.set_xlabel("Noise Level")
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+        ax.xaxis.set_major_formatter(mticker.PercentFormatter(xmax=1.0))
 
-    ax.set_xlabel("Noise Level")
-    ax.set_ylabel("Test Accuracy (%)")
-    ax.set_title(
-        "Noise Degradation: Accuracy vs Expert Noise (Budget=10)",
-        fontsize=14,
-        fontweight="bold",
-    )
-    ax.grid(True, alpha=0.3)
-    ax.legend()
-    ax.xaxis.set_major_formatter(mticker.PercentFormatter(xmax=1.0))
-
+    axes[0].set_ylabel("Test Accuracy (%)")
+    fig.suptitle("Noise Degradation: Accuracy vs Expert Noise",
+                 fontsize=15, fontweight="bold", y=1.02)
     fig.tight_layout()
     save_path = FIGURE_DIR / "fig5_noise_degradation.png"
     fig.savefig(save_path, bbox_inches="tight")
@@ -401,55 +408,52 @@ def plot_fig5_noise(data):
 # Fig 6: Budget x Strategy Heatmap
 # ---------------------------------------------------------------------------
 def plot_fig6_budget_heatmap(data):
-    """Heatmap of accuracy for budget x strategy combinations."""
+    """Heatmap of accuracy for noise_level x budget (Uncertainty strategy)."""
     exp4 = data["exp4"]
     budget_summary = exp4["budget"]["summary"]
 
-    strategies = ["Random", "Uncertainty", "Importance"]
-    strat_keys = ["random", "uncertainty", "importance"]
-    budgets = sorted(budget_summary["random"].keys())
+    noise_types = ["random", "adversarial"]
+    noise_levels = sorted(budget_summary["random"].keys())
+    budgets = sorted(budget_summary["random"][noise_levels[0]].keys())
 
-    # Build matrix: rows=strategies, columns=budgets
-    matrix = np.zeros((len(strategies), len(budgets)))
-    for i, sk in enumerate(strat_keys):
-        for j, b in enumerate(budgets):
-            matrix[i, j] = budget_summary[sk][b]
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
-    fig, ax = plt.subplots(figsize=(8, 6))
-    im = ax.imshow(matrix, cmap="YlGn", aspect="auto")
+    for ax_idx, noise_type in enumerate(noise_types):
+        ax = axes[ax_idx]
+        # Build matrix: rows=noise_levels, columns=budgets
+        matrix = np.zeros((len(noise_levels), len(budgets)))
+        for i, nl in enumerate(noise_levels):
+            for j, b in enumerate(budgets):
+                matrix[i, j] = budget_summary[noise_type][nl][b]
 
-    # Tick labels
-    ax.set_xticks(range(len(budgets)))
-    ax.set_xticklabels([str(b) for b in budgets])
-    ax.set_yticks(range(len(strategies)))
-    ax.set_yticklabels(strategies)
+        im = ax.imshow(matrix, cmap="YlGn", aspect="auto")
 
-    # Text annotations
-    for i in range(len(strategies)):
-        for j in range(len(budgets)):
-            val = matrix[i, j]
-            text_color = "white" if val >= matrix.mean() else "black"
-            ax.text(
-                j,
-                i,
-                f"{val:.1f}%",
-                ha="center",
-                va="center",
-                fontsize=12,
-                fontweight="bold",
-                color=text_color,
-            )
+        ax.set_xticks(range(len(budgets)))
+        ax.set_xticklabels([f"k={b}" for b in budgets])
+        ax.set_yticks(range(len(noise_levels)))
+        ax.set_yticklabels([f"{nl:.0%}" for nl in noise_levels])
 
-    ax.set_xlabel("Budget (k)")
-    ax.set_ylabel("Strategy")
-    ax.set_title(
-        "Budget x Strategy Accuracy Heatmap",
-        fontsize=14,
-        fontweight="bold",
-    )
-    cbar = fig.colorbar(im, ax=ax, label="Accuracy (%)")
+        for i in range(len(noise_levels)):
+            for j in range(len(budgets)):
+                val = matrix[i, j]
+                text_color = "white" if val <= matrix.min() + \
+                    (matrix.max() - matrix.min()) * 0.3 else "black"
+                ax.text(
+                    j, i, f"{val:.1f}%",
+                    ha="center", va="center",
+                    fontsize=11, fontweight="bold", color=text_color,
+                )
+
+        title = "Random Noise" if noise_type == "random" else "Adversarial Flip"
+        ax.set_title(f"{title}", fontsize=14, fontweight="bold")
+        ax.set_xlabel("Budget (k)")
+        ax.set_ylabel("Noise Level")
+        fig.colorbar(im, ax=ax, label="Accuracy (%)")
+
+    fig.suptitle("Noise × Budget Grid (Uncertainty Strategy)",
+                 fontsize=15, fontweight="bold", y=1.02)
     fig.tight_layout()
-    save_path = FIGURE_DIR / "fig6_budget_strategy_heatmap.png"
+    save_path = FIGURE_DIR / "fig6_noise_budget_heatmap.png"
     fig.savefig(save_path, bbox_inches="tight")
     plt.close(fig)
     print(f"[Fig 6] Saved to {save_path}")
