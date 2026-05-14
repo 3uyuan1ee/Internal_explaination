@@ -156,89 +156,56 @@ def plot_fig1_error_pie(data):
 # Fig 2: Intervention Efficiency Curves
 # ---------------------------------------------------------------------------
 def plot_fig2_efficiency(data):
-    """Accuracy vs k for 5 strategies with CBM baseline and Oracle bound."""
+    """Accuracy vs k for 6 strategies with CBM baseline and Oracle reference."""
     exp2 = data["exp2"]
     summary = exp2["summary"]
-    k_values = [k for k in sorted(summary["random"].keys()) if k != -1]
+    k_values = [k for k in sorted(summary["random"].keys()) if k > 0]
 
-    # Also include k=-1 (all concepts) if present
-    has_all = -1 in summary["random"]
-    k_plot = list(k_values)
-    if has_all:
-        k_plot.append(max(k_values) + 2)  # place "all" slightly after max k
-
-    # Compute CBM baseline and Oracle upper bound
     y = np.asarray(data["y"])
     yhat_cbm = np.asarray(data["yhat_cbm"])
     yhat_oracle = np.asarray(data["yhat_oracle"])
     cbm_baseline = (yhat_cbm == y).mean() * 100
-    oracle_bound = (yhat_oracle == y).mean() * 100
+    oracle_acc = (yhat_oracle == y).mean() * 100
 
     fig, ax = plt.subplots(figsize=(12, 6.75))
 
     for strat_key, display_name in STRATEGY_MAP.items():
-        accs = []
-        ks = []
-        for k in k_values:
-            accs.append(summary[strat_key][k])
-            ks.append(k)
-        if has_all:
-            accs.append(summary[strat_key][-1])
-            ks.append(k_plot[-1])
-
+        accs = [summary[strat_key][k] for k in k_values]
         ax.plot(
-            ks,
-            accs,
+            k_values, accs,
             color=COLORS[display_name],
             marker=MARKERS[display_name],
-            linewidth=2,
-            markersize=7,
+            linewidth=2, markersize=7,
             label=display_name,
         )
 
     # Horizontal reference lines
     ax.axhline(
-        y=cbm_baseline,
-        color="gray",
-        linestyle="--",
-        linewidth=1.5,
+        y=cbm_baseline, color="gray", linestyle="--", linewidth=1.5,
         label=f"CBM Baseline ({cbm_baseline:.1f}%)",
     )
     ax.axhline(
-        y=oracle_bound,
-        color="black",
-        linestyle=":",
-        linewidth=1.5,
-        label=f"Oracle Upper Bound ({oracle_bound:.1f}%)",
+        y=oracle_acc, color="black", linestyle=":", linewidth=1.5,
+        label=f"Oracle All-GT ({oracle_acc:.1f}%)",
     )
 
     ax.set_xlabel("Number of Concepts Corrected (k)")
     ax.set_ylabel("Test Accuracy (%)")
     ax.set_title(
         "Intervention Efficiency: Accuracy vs Expert Effort",
-        fontsize=14,
-        fontweight="bold",
+        fontsize=14, fontweight="bold",
     )
-    # Compute y-axis range from actual data (don't assume oracle_bound is upper)
-    all_accs = [cbm_baseline, oracle_bound]
+
+    # y-axis from actual data range
+    all_accs = [cbm_baseline, oracle_acc]
     for strat_key in STRATEGY_MAP:
-        for k in k_values:
-            all_accs.append(summary[strat_key][k])
-        if has_all:
-            all_accs.append(summary[strat_key][-1])
+        all_accs.extend(summary[strat_key][k] for k in k_values)
     y_min, y_max = min(all_accs), max(all_accs)
     padding = max((y_max - y_min) * 0.08, 2)
     ax.set_ylim(bottom=max(0, y_min - padding), top=min(100, y_max + padding))
+
     ax.grid(True, alpha=0.3)
     ax.legend(loc="lower right")
-
-    # Annotate "all" on x-axis if present
-    if has_all:
-        xticks = list(k_values) + [k_plot[-1]]
-        xticklabels = [str(k) for k in k_values] + ["all"]
-        ax.set_xticks(xticks)
-        ax.set_xticklabels(xticklabels)
-
     fig.tight_layout()
     save_path = FIGURE_DIR / "fig2_intervention_efficiency.png"
     fig.savefig(save_path, bbox_inches="tight")
