@@ -219,7 +219,16 @@ def plot_fig2_efficiency(data):
         fontsize=14,
         fontweight="bold",
     )
-    ax.set_ylim(bottom=max(0, cbm_baseline - 10), top=min(100, oracle_bound + 5))
+    # Compute y-axis range from actual data (don't assume oracle_bound is upper)
+    all_accs = [cbm_baseline, oracle_bound]
+    for strat_key in STRATEGY_MAP:
+        for k in k_values:
+            all_accs.append(summary[strat_key][k])
+        if has_all:
+            all_accs.append(summary[strat_key][-1])
+    y_min, y_max = min(all_accs), max(all_accs)
+    padding = max((y_max - y_min) * 0.08, 2)
+    ax.set_ylim(bottom=max(0, y_min - padding), top=min(100, y_max + padding))
     ax.grid(True, alpha=0.3)
     ax.legend(loc="lower right")
 
